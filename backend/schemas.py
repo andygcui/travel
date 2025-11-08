@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class TravelerPreferences(BaseModel):
-    likes: List[str] = Field(default_factory=list)
+    likes: List[str] = Field(default_factory=list, description="e.g. food, art, outdoors")
     dislikes: List[str] = Field(default_factory=list)
     dietary_restrictions: List[str] = Field(default_factory=list)
     accessibility_needs: List[str] = Field(default_factory=list)
@@ -36,6 +36,15 @@ class TripPlanRequest(BaseModel):
     profile: Optional[TravelerProfile] = None
 
 
+class ItineraryGenerationRequest(BaseModel):
+    """GreenTrip-specific request for /generate_itinerary endpoint"""
+    destination: str
+    num_days: int = Field(gt=0, le=30, description="Number of days for the trip")
+    budget: float = Field(gt=0, description="Total budget in USD")
+    preferences: List[str] = Field(default_factory=list, description="e.g. food, art, outdoors")
+    mode: str = Field(default="balanced", description="price-optimal or balanced")
+
+
 class WeatherForecast(BaseModel):
     date: date
     summary: str
@@ -62,6 +71,7 @@ class FlightOption(BaseModel):
     booking_url: Optional[str] = None
     segments: List[FlightSegment]
     refundable_until: Optional[datetime] = None
+    emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions in kg")
 
 
 class LodgingOption(BaseModel):
@@ -76,6 +86,7 @@ class LodgingOption(BaseModel):
     )
     booking_url: Optional[str] = None
     refundable_until: Optional[datetime] = None
+    emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions per night in kg")
 
 
 class PointOfInterest(BaseModel):
@@ -106,6 +117,21 @@ class ItineraryDay(BaseModel):
     theme: Optional[str] = None
     summary: str
     activities: List[ItineraryActivity] = Field(default_factory=list)
+
+
+class DedalusItineraryDay(BaseModel):
+    """Dedalus API response format for daily itinerary"""
+    day: int
+    morning: str
+    afternoon: str
+    evening: str
+
+
+class DedalusItineraryResponse(BaseModel):
+    """Dedalus API response format"""
+    days: List[DedalusItineraryDay]
+    totals: dict = Field(description="Contains cost and emissions_kg")
+    rationale: str
 
 
 class BudgetBreakdown(BaseModel):
@@ -164,4 +190,16 @@ class BookingConfirmation(BaseModel):
     created_at: datetime
     refundable_until: Optional[datetime] = None
     details: dict
+
+
+class GreenTripItineraryResponse(BaseModel):
+    """GreenTrip response from /generate_itinerary"""
+    destination: str
+    num_days: int
+    budget: float
+    mode: str
+    days: List[DedalusItineraryDay]
+    totals: dict = Field(description="Contains cost and emissions_kg")
+    rationale: str
+    eco_score: Optional[float] = Field(default=None, description="0-100 sustainability score")
 

@@ -2,12 +2,20 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import BookingRequest, BookingConfirmation, TripPlanRequest, TripPlanResponse
-from .services import planner
+from schemas import (
+    BookingRequest,
+    BookingConfirmation,
+    TripPlanRequest,
+    TripPlanResponse,
+    ItineraryGenerationRequest,
+    GreenTripItineraryResponse,
+)
+from services import planner
+from services.itinerary_generator import generate_itinerary
 
 load_dotenv()
 
-app = FastAPI(title="TripSmith AI Backend")
+app = FastAPI(title="GreenTrip AI Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,4 +48,15 @@ def get_booking(booking_id: str):
     if not confirmation:
         raise HTTPException(status_code=404, detail="Booking not found")
     return confirmation
+
+
+@app.post("/generate_itinerary", response_model=GreenTripItineraryResponse)
+async def create_itinerary(request: ItineraryGenerationRequest):
+    """GreenTrip endpoint: Generate optimized eco-friendly travel itinerary"""
+    try:
+        return await generate_itinerary(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating itinerary: {str(e)}")
 

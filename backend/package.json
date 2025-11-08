@@ -1,0 +1,9 @@
+{
+  "name": "tripsmith-backend",
+  "version": "1.0.0",
+  "description": "TripSmith AI Backend",
+  "scripts": {
+    "start": ".venv/bin/uvicorn app:app --reload"
+  }
+}
+

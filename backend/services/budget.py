@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..schemas import BudgetBreakdown, TripPlanRequest
+from schemas import BudgetBreakdown, TripPlanRequest
 
 
 def build_budget_breakdown(request: TripPlanRequest, flight_cost: float, lodging_cost: float) -> BudgetBreakdown:

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict
 
-from ..schemas import BookingConfirmation, BookingRequest, TripPlanResponse
+from schemas import BookingConfirmation, BookingRequest, TripPlanResponse
 
 _BOOKINGS: Dict[str, BookingConfirmation] = {}
 

@@ -7,7 +7,7 @@ from typing import List
 
 import httpx
 
-from ..schemas import FlightOption, FlightSegment, TripPlanRequest
+from schemas import FlightOption, FlightSegment, TripPlanRequest
 
 TEQUILA_API_KEY = os.getenv("TEQUILA_API_KEY")
 TEQUILA_BASE_URL = "https://api.tequila.kiwi.com"

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from datetime import date
 
-from ..schemas import (
+from schemas import (
     BookingConfirmation,
     BookingRequest,
     TripPlanRequest,
     TripPlanResponse,
 )
-from . import budget, bookings, flights, geo, health, lodging, pois, sustainability, weather
-from .ai import generate_itinerary
+from services import budget, bookings, flights, geo, health, lodging, pois, sustainability, weather
+from services.ai import generate_itinerary
 
 
 async def build_trip_plan(request: TripPlanRequest) -> TripPlanResponse:

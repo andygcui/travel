@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..schemas import LodgingOption, SustainabilityScore, TripPlanRequest
+from schemas import LodgingOption, SustainabilityScore, TripPlanRequest
 
 
 def calculate_sustainability(

@@ -5,7 +5,7 @@ from typing import List
 
 import httpx
 
-from ..schemas import PointOfInterest
+from schemas import PointOfInterest
 
 OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY")
 

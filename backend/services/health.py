@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..schemas import HealthAdvisory
+from schemas import HealthAdvisory
 
 TRAVEL_HEALTH_API = "https://www.travel-advisory.info/api"
 

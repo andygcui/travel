@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import httpx
 
-from ..schemas import WeatherForecast
+from schemas import WeatherForecast
 
 
 async def fetch_weather_forecast(

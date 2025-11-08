@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
-from ..schemas import LodgingOption, TripPlanRequest
+from schemas import LodgingOption, TripPlanRequest
 
 
 async def fetch_lodging(request: TripPlanRequest) -> List[LodgingOption]:

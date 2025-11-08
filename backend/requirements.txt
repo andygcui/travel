@@ -1,4 +1,3 @@
-nginx
 fastapi
 uvicorn
 requests

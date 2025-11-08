@@ -5,7 +5,7 @@ from typing import List
 
 import httpx
 
-from ..schemas import (
+from schemas import (
     ItineraryActivity,
     ItineraryDay,
     PointOfInterest,
