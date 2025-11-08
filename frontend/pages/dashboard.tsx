@@ -28,6 +28,8 @@ export default function Dashboard() {
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [preferences, setPreferences] = useState<any>(null);
   const [loadingPreferences, setLoadingPreferences] = useState(false);
+  const [registrationPrefs, setRegistrationPrefs] = useState<any>(null);
+  const [loadingRegistrationPrefs, setLoadingRegistrationPrefs] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -36,6 +38,7 @@ export default function Dashboard() {
         loadTrips(session.user.id);
         loadProfile(session.user.id);
         loadPreferences(session.user.id);
+        loadRegistrationPreferences(session.user.id);
       } else {
         router.push("/");
       }
@@ -47,6 +50,7 @@ export default function Dashboard() {
         loadTrips(session.user.id);
         loadProfile(session.user.id);
         loadPreferences(session.user.id);
+        loadRegistrationPreferences(session.user.id);
       } else {
         router.push("/");
       }
@@ -80,6 +84,28 @@ export default function Dashboard() {
       console.error("Error loading preferences:", err);
     } finally {
       setLoadingPreferences(false);
+    }
+  };
+
+  const loadRegistrationPreferences = async (userId: string) => {
+    setLoadingRegistrationPrefs(true);
+    try {
+      const { data, error } = await supabase
+        .from("user_preferences")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 = not found, which is OK
+        console.error("Error loading registration preferences:", error);
+      } else if (data) {
+        setRegistrationPrefs(data);
+      }
+    } catch (err: any) {
+      console.error("Error loading registration preferences:", err);
+    } finally {
+      setLoadingRegistrationPrefs(false);
     }
   };
 
@@ -213,9 +239,95 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Detailed Preferences */}
+          {/* Registration Preferences */}
+          {loadingRegistrationPrefs ? (
+            <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+              <p className="text-emerald-700">Loading registration preferences...</p>
+            </div>
+          ) : registrationPrefs && (
+            (registrationPrefs.preferences?.length > 0 ||
+             registrationPrefs.likes?.length > 0 ||
+             registrationPrefs.dislikes?.length > 0 ||
+             registrationPrefs.dietary_restrictions?.length > 0) && (
+              <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-xl font-semibold text-emerald-900">Registration Preferences</h2>
+                <div className="space-y-4">
+                  {registrationPrefs.preferences && registrationPrefs.preferences.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                        Interests
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {registrationPrefs.preferences.map((pref: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                          >
+                            {pref}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {registrationPrefs.likes && registrationPrefs.likes.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                        Things You Like
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {registrationPrefs.likes.map((like: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800"
+                          >
+                            {like}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {registrationPrefs.dislikes && registrationPrefs.dislikes.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                        Things You Dislike
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {registrationPrefs.dislikes.map((dislike: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800"
+                          >
+                            {dislike}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {registrationPrefs.dietary_restrictions && registrationPrefs.dietary_restrictions.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                        Dietary Restrictions
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {registrationPrefs.dietary_restrictions.map((diet: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-800"
+                          >
+                            {diet}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
+          {/* Chat-Learned Preferences */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Your Preferences</h2>
+            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Chat-Learned Preferences</h2>
             {loadingPreferences ? (
               <p className="text-emerald-700">Loading preferences...</p>
             ) : preferences ? (
@@ -275,7 +387,7 @@ export default function Dashboard() {
                   (!preferences.frequent_trip_specific || preferences.frequent_trip_specific.length === 0) &&
                   (!preferences.temporal || preferences.temporal.length === 0) && (
                     <p className="text-emerald-700 italic">
-                      No preferences saved yet. Use the chat feature when planning trips to start building your profile!
+                      No chat-learned preferences yet. Use the chat feature when planning trips to start building your profile!
                     </p>
                   )}
               </div>
