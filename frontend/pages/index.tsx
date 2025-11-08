@@ -566,19 +566,19 @@ export default function Home() {
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
               {[
                 {
-                  name: "Sarah Chen",
+                  name: "Brooke Xu",
                   quote:
                     "GreenTrip planned my perfect 10-day Japan trip. Every detail was thoughtful, sustainable, and within budget. Best travel experience ever!",
                   rating: 5,
                 },
                 {
-                  name: "Marcus Johnson",
+                  name: "Tian Pu",
                   quote:
                     "As someone who cares about the environment, I love how GreenTrip balances adventure with carbon awareness. The itinerary was spot-on.",
                   rating: 5,
                 },
                 {
-                  name: "Emma Rodriguez",
+                  name: "Arya Paliwal",
                   quote:
                     "The personalized recommendations were incredible. Found hidden gems I never would have discovered on my own. Highly recommend!",
                   rating: 5,
