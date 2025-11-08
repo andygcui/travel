@@ -2,4 +2,6 @@ nginx
 fastapi
 uvicorn
 requests
+httpx
+python-dotenv
 
