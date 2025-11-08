@@ -222,28 +222,28 @@ export default function Home() {
         <header
           className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
             isScrolled
-              ? "bg-[#0a1929]/95 backdrop-blur-md shadow-lg"
+              ? "bg-[#0f3d2e]/80 backdrop-blur-md shadow-lg"
               : "bg-transparent"
           }`}
         >
           <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <div className="text-2xl font-bold text-[#34d399]">TripSmith</div>
+            <div className="text-2xl font-bold text-[#3cb371]">TripSmith</div>
             <div className="hidden items-center gap-8 md:flex">
               <a
                 href="#experiences"
-                className="text-sm font-medium text-white transition hover:text-[#34d399]"
+                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
               >
                 Experiences
               </a>
               <a
                 href="#sustainability"
-                className="text-sm font-medium text-white transition hover:text-[#34d399]"
+                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
               >
                 Sustainability
               </a>
               <a
                 href="#membership"
-                className="text-sm font-medium text-white transition hover:text-[#34d399]"
+                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
               >
                 Membership
               </a>
@@ -254,7 +254,7 @@ export default function Home() {
                   <span className="text-sm text-white/80">{user.email}</span>
                   <button
                     onClick={handleSignOut}
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#34d399]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
                   >
                     Sign Out
                   </button>
@@ -262,7 +262,7 @@ export default function Home() {
               ) : (
                 <button
                   onClick={() => setShowAuthModal(true)}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#34d399]"
+                  className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
                 >
                   Sign In / Sign Up
                 </button>
@@ -272,14 +272,14 @@ export default function Home() {
         </header>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a1929] via-[#1e3a5f] via-[#2d5a4f] to-[#1b5e20] px-6 pt-24 pb-32">
+        <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0f3d2e] via-[#1b5e20] to-[#0f3d2e] px-6 pt-24 pb-32">
           <div className="mx-auto max-w-4xl text-center">
             <div className="animate-fade-in-up space-y-6">
               <div className="mb-4 text-5xl">🌍</div>
-              <h1 className="text-5xl font-bold leading-tight text-white md:text-7xl">
+              <h1 className="text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
                 Smarter Trips. Smaller Footprints.
               </h1>
-              <p className="mx-auto max-w-2xl text-lg text-green-100 md:text-xl">
+              <p className="mx-auto max-w-2xl text-lg md:text-xl text-[#eaf6ee] mt-4">
                 Discover smarter, greener journeys curated to balance cost,
                 experience, and sustainability.
               </p>
@@ -288,16 +288,16 @@ export default function Home() {
         </section>
 
         {/* Trip Search Bar */}
-        <section className="relative -mt-20 px-6">
+        <section className="relative -mt-32 px-6 pb-12">
           <div className="mx-auto max-w-6xl">
             <form
               onSubmit={handlePlanTrip}
-              className="rounded-2xl bg-gradient-to-br from-[#e0f2fe] to-[#d1fae5] p-8 shadow-2xl"
+              className="rounded-2xl bg-white/95 backdrop-blur-sm p-8 shadow-2xl border border-green-100"
             >
               {/* First Row: 5 Fields */}
               <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Traveling from
                   </label>
                   <input
@@ -305,11 +305,11 @@ export default function Home() {
                     value={origin}
                     onChange={(e) => setOrigin(e.target.value)}
                     placeholder="e.g. New York"
-                    className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Destination to
                   </label>
                   <input
@@ -317,22 +317,22 @@ export default function Home() {
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
                     placeholder="e.g. Paris"
-                    className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Start Date
                   </label>
                   <input
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     End Date
                   </label>
                   <input
@@ -340,11 +340,11 @@ export default function Home() {
                     value={endDate}
                     min={startDate || undefined}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Budget (USD)
                   </label>
                   <input
@@ -354,7 +354,7 @@ export default function Home() {
                     value={budget}
                     onChange={(e) => setBudget(Number(e.target.value))}
                     placeholder="2000"
-                    className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     required
                   />
                 </div>
@@ -362,7 +362,7 @@ export default function Home() {
 
               {/* Second Row: Activity Chips */}
               <div className="mb-6">
-                <label className="mb-3 block text-sm font-semibold text-[#0a1929]">
+                <label className="mb-3 block text-sm font-semibold text-[#0f3d2e]">
                   Select Activities
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -373,8 +373,8 @@ export default function Home() {
                       onClick={() => togglePreference(pref.toLowerCase())}
                       className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                         preferences.includes(pref.toLowerCase())
-                          ? "bg-gradient-to-r from-[#1e3a5f] to-[#1b5e20] text-white shadow-md"
-                          : "bg-white text-[#0a1929] hover:bg-blue-50"
+                          ? "bg-gradient-to-r from-[#3cb371] to-[#1b5e20] text-white shadow-md"
+                          : "bg-white text-[#0f3d2e] hover:bg-[#eaf6ee] border border-green-200"
                       }`}
                     >
                       {pref}
@@ -386,7 +386,7 @@ export default function Home() {
               {/* Dietary Restrictions - Only shown when logged in */}
               {user && (
                 <div className="mb-6">
-                  <label className="mb-3 block text-sm font-semibold text-[#0a1929]">
+                  <label className="mb-3 block text-sm font-semibold text-[#0f3d2e]">
                     Dietary Restrictions
                   </label>
                   <div className="flex flex-wrap gap-2">
@@ -403,8 +403,8 @@ export default function Home() {
                         }}
                         className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                           dietaryRestrictions.includes(diet)
-                            ? "bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md"
-                            : "bg-white text-[#0a1929] hover:bg-blue-50 border border-blue-200"
+                            ? "bg-gradient-to-r from-[#3cb371] to-[#1b5e20] text-white shadow-md"
+                            : "bg-white text-[#0f3d2e] hover:bg-[#eaf6ee] border border-green-200"
                         }`}
                       >
                         {diet.charAt(0).toUpperCase() + diet.slice(1)}
@@ -418,7 +418,7 @@ export default function Home() {
               {user && (
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                    <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                       Likes
                     </label>
                     <input
@@ -430,11 +430,11 @@ export default function Home() {
                         setLikes(newLikes);
                         saveUserPreferences();
                       }}
-                      className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                      className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-sm text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                    <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                       Dislikes
                     </label>
                     <input
@@ -446,7 +446,7 @@ export default function Home() {
                         setDislikes(newDislikes);
                         saveUserPreferences();
                       }}
-                      className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                      className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-sm text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     />
                   </div>
                 </div>
@@ -454,38 +454,38 @@ export default function Home() {
 
               {/* Optimization Mode */}
               <div className="mb-6">
-                <label className="mb-3 block text-sm font-semibold text-[#0a1929]">
+                <label className="mb-3 block text-sm font-semibold text-[#0f3d2e]">
                   Optimization Focus
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4 transition hover:border-blue-300 cursor-pointer">
+                  <label className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50/70 p-4 transition hover:border-[#3cb371] cursor-pointer">
                     <input
                       type="radio"
                       name="mode"
                       value="price-optimal"
                       checked={mode === "price-optimal"}
                       onChange={() => setMode("price-optimal")}
-                      className="h-4 w-4 text-blue-600 focus:ring-0"
+                      className="h-4 w-4 text-[#3cb371] focus:ring-0"
                     />
                     <div>
-                      <p className="text-sm font-semibold text-[#0a1929]">Price-Optimal</p>
-                      <p className="text-xs text-[#1e3a5f]">
+                      <p className="text-sm font-semibold text-[#0f3d2e]">Price-Optimal</p>
+                      <p className="text-xs text-[#1b5e20]">
                         Maximize value while preserving eco standards.
                       </p>
                     </div>
                   </label>
-                  <label className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white p-4 transition hover:border-blue-300 cursor-pointer">
+                  <label className="flex items-center gap-3 rounded-xl border border-green-200 bg-white p-4 transition hover:border-[#3cb371] cursor-pointer">
                     <input
                       type="radio"
                       name="mode"
                       value="balanced"
                       checked={mode === "balanced"}
                       onChange={() => setMode("balanced")}
-                      className="h-4 w-4 text-blue-600 focus:ring-0"
+                      className="h-4 w-4 text-[#3cb371] focus:ring-0"
                     />
                     <div>
-                      <p className="text-sm font-semibold text-[#0a1929]">Balanced</p>
-                      <p className="text-xs text-[#1e3a5f]">
+                      <p className="text-sm font-semibold text-[#0f3d2e]">Balanced</p>
+                      <p className="text-xs text-[#1b5e20]">
                         Harmonize indulgence, culture, and footprint.
                       </p>
                     </div>
@@ -497,9 +497,13 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !destination}
-                className="w-full rounded-full bg-gradient-to-r from-blue-600 via-teal-500 to-green-600 px-8 py-4 text-lg font-semibold text-white shadow-lg transition hover:from-blue-700 hover:via-teal-600 hover:to-green-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                className="relative w-full rounded-full bg-gradient-to-r from-[#3cb371] to-[#1b5e20] px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-[#3cb371]/30 transition hover:from-[#2ea55f] hover:to-[#155d1a] hover:shadow-xl hover:shadow-[#3cb371]/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Crafting your journey..." : "Plan My Trip"}
+                <span className="relative z-10">
+                  {loading ? "Crafting your journey..." : "Plan My Trip"}
+                </span>
+                {/* Glow effect */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#3cb371] to-[#1b5e20] opacity-50 blur-xl" />
               </button>
 
               {error && (
@@ -514,10 +518,10 @@ export default function Home() {
         {/* Mission Section */}
         <section className="bg-white px-6 py-24">
           <div className="mx-auto max-w-6xl">
-            <h2 className="mb-6 text-center text-4xl font-bold text-[#0a1929]">
+            <h2 className="mb-6 text-center text-4xl font-bold text-[#0f3d2e]">
               Our Mission
             </h2>
-            <p className="mx-auto max-w-3xl text-center text-lg text-[#1e3a5f]">
+            <p className="mx-auto max-w-3xl text-center text-lg text-[#1b5e20]">
               We're building the future of sustainable, data-driven travel
               optimization. Our platform creates carbon-aware itineraries that
               balance adventure, value, and environmental responsibility—helping
@@ -526,32 +530,32 @@ export default function Home() {
 
             {/* Icon Cards */}
             <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
-              <div className="group rounded-2xl border border-blue-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">🌍</div>
-                <h3 className="mb-2 text-xl font-semibold text-[#0a1929]">
+                <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Eco Optimization
                 </h3>
-                <p className="text-[#1e3a5f]">
+                <p className="text-[#1b5e20]">
                   Every trip is optimized for minimal carbon footprint while
                   maximizing your experience.
                 </p>
               </div>
-              <div className="group rounded-2xl border border-blue-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">💸</div>
-                <h3 className="mb-2 text-xl font-semibold text-[#0a1929]">
+                <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Value Transparency
                 </h3>
-                <p className="text-[#1e3a5f]">
+                <p className="text-[#1b5e20]">
                   Clear pricing and cost breakdowns so you know exactly what
                   you're paying for.
                 </p>
               </div>
-              <div className="group rounded-2xl border border-blue-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">✈️</div>
-                <h3 className="mb-2 text-xl font-semibold text-[#0a1929]">
+                <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Personalized Planning
                 </h3>
-                <p className="text-[#1e3a5f]">
+                <p className="text-[#1b5e20]">
                   AI-powered itineraries tailored to your preferences, budget,
                   and travel style.
                 </p>
@@ -561,9 +565,9 @@ export default function Home() {
         </section>
 
         {/* Testimonials Section */}
-        <section className="bg-gradient-to-br from-[#e0f2fe] to-[#d1fae5] px-6 py-24">
+        <section className="bg-[#eaf6ee] px-6 py-24">
           <div className="mx-auto max-w-6xl">
-            <h2 className="mb-12 text-center text-4xl font-bold text-[#0a1929]">
+            <h2 className="mb-12 text-center text-4xl font-bold text-[#0f3d2e]">
               Traveler Stories
             </h2>
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
@@ -598,10 +602,10 @@ export default function Home() {
                       </span>
                     ))}
                   </div>
-                  <p className="mb-4 text-[#1e3a5f] italic">
+                  <p className="mb-4 text-[#1b5e20] italic">
                     "{testimonial.quote}"
                   </p>
-                  <p className="font-semibold text-[#0a1929]">
+                  <p className="font-semibold text-[#0f3d2e]">
                     — {testimonial.name}
                   </p>
                 </div>
@@ -611,24 +615,24 @@ export default function Home() {
         </section>
 
         {/* Footer */}
-        <footer className="bg-gradient-to-br from-[#0a1929] via-[#1e3a5f] to-[#1b5e20] px-6 py-16 text-white">
+        <footer className="bg-[#0f3d2e] px-6 py-16 text-white">
           <div className="mx-auto max-w-6xl">
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
               <div>
                 <h3 className="mb-4 text-lg font-semibold">Company</h3>
-                <ul className="space-y-2 text-sm text-blue-200">
+                <ul className="space-y-2 text-sm text-[#eaf6ee]">
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       About Us
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       Careers
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       Press
                     </a>
                   </li>
@@ -636,19 +640,19 @@ export default function Home() {
               </div>
               <div>
                 <h3 className="mb-4 text-lg font-semibold">Contact</h3>
-                <ul className="space-y-2 text-sm text-blue-200">
+                <ul className="space-y-2 text-sm text-[#eaf6ee]">
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       Support
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       hello@greentrip.com
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       FAQ
                     </a>
                   </li>
@@ -656,26 +660,26 @@ export default function Home() {
               </div>
               <div>
                 <h3 className="mb-4 text-lg font-semibold">Socials</h3>
-                <ul className="space-y-2 text-sm text-blue-200">
+                <ul className="space-y-2 text-sm text-[#eaf6ee]">
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       Twitter
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       Instagram
                     </a>
                   </li>
                   <li>
-                    <a href="#" className="hover:text-white transition">
+                    <a href="#" className="hover:text-[#3cb371] transition">
                       LinkedIn
                     </a>
                   </li>
                 </ul>
               </div>
             </div>
-            <div className="mt-12 border-t border-blue-800 pt-8 text-center text-sm text-blue-200">
+            <div className="mt-12 border-t border-green-800 pt-8 text-center text-sm text-[#eaf6ee]">
               © 2025 GreenTrip. All rights reserved.
             </div>
           </div>
@@ -695,6 +699,10 @@ export default function Home() {
         }
         .animate-fade-in-up {
           animation: fade-in-up 0.8s ease-out;
+        }
+        /* Smooth scrolling */
+        html {
+          scroll-behavior: smooth;
         }
       `}</style>
 
