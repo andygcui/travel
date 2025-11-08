@@ -24,12 +24,18 @@ export default function Dashboard() {
   const [trips, setTrips] = useState<SavedTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [profileSummary, setProfileSummary] = useState<string>("");
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [preferences, setPreferences] = useState<any>(null);
+  const [loadingPreferences, setLoadingPreferences] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
         loadTrips(session.user.id);
+        loadProfile(session.user.id);
+        loadPreferences(session.user.id);
       } else {
         router.push("/");
       }
@@ -39,11 +45,43 @@ export default function Dashboard() {
       if (session?.user) {
         setUser(session.user);
         loadTrips(session.user.id);
+        loadProfile(session.user.id);
+        loadPreferences(session.user.id);
       } else {
         router.push("/");
       }
     });
   }, [router]);
+
+  const loadProfile = async (userId: string) => {
+    setLoadingProfile(true);
+    try {
+      const response = await fetch(`http://localhost:8000/user/profile?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setProfileSummary(data.summary || "");
+      }
+    } catch (err: any) {
+      console.error("Error loading profile:", err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const loadPreferences = async (userId: string) => {
+    setLoadingPreferences(true);
+    try {
+      const response = await fetch(`http://localhost:8000/user/preferences?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPreferences(data);
+      }
+    } catch (err: any) {
+      console.error("Error loading preferences:", err);
+    } finally {
+      setLoadingPreferences(false);
+    }
+  };
 
   const loadTrips = async (userId: string) => {
     setLoading(true);
@@ -159,6 +197,91 @@ export default function Dashboard() {
             <p className="mt-2 text-emerald-700">
               View and manage your travel itineraries
             </p>
+          </div>
+
+          {/* Travel Profile Summary */}
+          <div className="mb-8 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 shadow-sm">
+            <h2 className="mb-3 text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
+            {loadingProfile ? (
+              <p className="text-emerald-700">Loading your profile...</p>
+            ) : profileSummary ? (
+              <p className="text-emerald-800 leading-relaxed">{profileSummary}</p>
+            ) : (
+              <p className="text-emerald-700 italic">
+                No profile summary yet. Start planning trips and using the chat feature to build your travel profile!
+              </p>
+            )}
+          </div>
+
+          {/* Detailed Preferences */}
+          <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Your Preferences</h2>
+            {loadingPreferences ? (
+              <p className="text-emerald-700">Loading preferences...</p>
+            ) : preferences ? (
+              <div className="space-y-4">
+                {preferences.long_term && preferences.long_term.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                      Long-term Preferences
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {preferences.long_term.map((pref: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                        >
+                          {pref.preference_value} ({pref.frequency}x)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {preferences.frequent_trip_specific && preferences.frequent_trip_specific.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                      Frequent Trip Preferences
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {preferences.frequent_trip_specific.map((pref: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                        >
+                          {pref.preference_value} ({pref.frequency}x)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {preferences.temporal && preferences.temporal.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                      Temporal Preferences
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {preferences.temporal.map((pref: any, idx: number) => (
+                        <span
+                          key={idx}
+                          className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                        >
+                          {pref.preference_value} ({pref.frequency}x)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(!preferences.long_term || preferences.long_term.length === 0) &&
+                  (!preferences.frequent_trip_specific || preferences.frequent_trip_specific.length === 0) &&
+                  (!preferences.temporal || preferences.temporal.length === 0) && (
+                    <p className="text-emerald-700 italic">
+                      No preferences saved yet. Use the chat feature when planning trips to start building your profile!
+                    </p>
+                  )}
+              </div>
+            ) : (
+              <p className="text-emerald-700 italic">Unable to load preferences at this time.</p>
+            )}
           </div>
 
           {trips.length === 0 ? (

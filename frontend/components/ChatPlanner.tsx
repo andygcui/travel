@@ -1,19 +1,22 @@
 import { useState, useRef, useEffect } from "react";
+import { supabase } from "../lib/supabase";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  extractedPreferences?: any[];
 }
 
 interface ChatPlannerProps {
   itinerary: any;
   onItineraryUpdate: (updatedItinerary: any) => void;
   onClose?: () => void;
+  tripId?: string;
 }
 
-export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose }: ChatPlannerProps) {
+export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose, tripId }: ChatPlannerProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -24,7 +27,14 @@ export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose }: C
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,6 +65,8 @@ export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose }: C
         body: JSON.stringify({
           message: userMessage.content,
           itinerary: itinerary,
+          user_id: user?.id || null,
+          trip_id: tripId || null,
         }),
       });
 
@@ -64,11 +76,19 @@ export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose }: C
 
       const data = await response.json();
       
+      // Build response message with preference extraction feedback
+      let responseContent = data.response;
+      if (data.extracted_preferences && data.extracted_preferences.length > 0) {
+        const prefs = data.extracted_preferences.map((p: any) => p.preference_value).join(", ");
+        responseContent += `\n\n✓ I've noted your preferences: ${prefs}`;
+      }
+      
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.response,
+        content: responseContent,
         timestamp: new Date(),
+        extractedPreferences: data.extracted_preferences || [],
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
