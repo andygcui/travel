@@ -507,15 +507,15 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
             className="group flex items-center gap-3 rounded-xl p-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             aria-label="Back to planner"
           >
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 transition duration-300 group-hover:scale-105 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-            />
             <div className="text-left">
+              <span className="text-2xl font-bold text-[#3cb371] transition duration-300 group-hover:text-[#2ea55f]">
+                GreenTrip
+              </span>
               <p className="text-xs uppercase tracking-[0.3em] text-emerald-500 transition group-hover:text-emerald-600">
                 TripSmith • Results
               </p>
-              <h1 className="text-xl font-medium text-emerald-900 transition group-hover:text-emerald-800 md:text-2xl">
-                GreenTrip Journey Report
+              <h1 className="text-xl font-medium text-emerald-900 transition duration-300 group-hover:text-emerald-800 md:text-2xl">
+                Journey Report
               </h1>
             </div>
           </button>
