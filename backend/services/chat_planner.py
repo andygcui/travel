@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from dedalus_labs import AsyncDedalus, DedalusRunner
 from services import (
@@ -16,23 +16,47 @@ from services import (
     climatiq_service,
     dedalus_client,
 )
+from services.preference_extractor import extract_preferences_from_message
+from services.preference_aggregator import save_preferences, promote_frequent_preferences
 from schemas import ItineraryGenerationRequest
 
 logger = logging.getLogger(__name__)
 
 
-async def chat_planner(message: str, current_itinerary: Dict[str, Any]) -> Dict[str, Any]:
+async def chat_planner(
+    message: str, 
+    current_itinerary: Dict[str, Any],
+    user_id: Optional[str] = None,
+    trip_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Handle chat messages to modify itinerary.
     
     Args:
         message: User's chat message (e.g., "This flight time doesn't work", "Avoid crowded places")
         current_itinerary: Current itinerary data
+        user_id: Optional user ID for preference extraction
+        trip_id: Optional trip ID if modifying a saved trip
     
     Returns:
-        Dict with 'response' (chat response) and optionally 'updated_itinerary'
+        Dict with 'response' (chat response), 'updated_itinerary' (optional), and 'extracted_preferences' (optional)
     """
+    extracted_prefs = []
+    
     try:
+        # Extract preferences from the message if user_id is provided
+        if user_id:
+            try:
+                extracted_prefs = await extract_preferences_from_message(message, user_id, trip_id)
+                if extracted_prefs:
+                    # Save preferences to database
+                    await save_preferences(extracted_prefs)
+                    # Check for promotion opportunities
+                    await promote_frequent_preferences(user_id)
+                    logger.info(f"Extracted and saved {len(extracted_prefs)} preferences")
+            except Exception as e:
+                logger.warning(f"Failed to extract preferences: {e}", exc_info=True)
+                # Continue even if preference extraction fails
         # Extract key information from current itinerary
         destination = current_itinerary.get("destination", "")
         start_date_str = current_itinerary.get("start_date")
@@ -182,12 +206,14 @@ Respond in a natural, helpful way. If you need to regenerate the itinerary, say 
             return {
                 "response": f"I've updated your itinerary based on your request: {message}. The changes have been applied!",
                 "updated_itinerary": updated_itinerary,
+                "extracted_preferences": extracted_prefs if extracted_prefs else None,
             }
         else:
             # Just a conversational response, no itinerary update needed
             return {
                 "response": assistant_response,
                 "updated_itinerary": None,
+                "extracted_preferences": extracted_prefs if extracted_prefs else None,
             }
             
     except Exception as e:
@@ -195,5 +221,6 @@ Respond in a natural, helpful way. If you need to regenerate the itinerary, say 
         return {
             "response": f"I apologize, but I encountered an error processing your request. Please try rephrasing it or contact support if the issue persists.",
             "updated_itinerary": None,
+            "extracted_preferences": None,
         }
 

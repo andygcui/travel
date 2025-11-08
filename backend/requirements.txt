@@ -4,4 +4,5 @@ requests
 httpx
 python-dotenv
 dedalus-labs
+supabase
 

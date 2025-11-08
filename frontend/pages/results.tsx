@@ -243,6 +243,7 @@ export default function Results() {
   const [user, setUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedTripId, setSavedTripId] = useState<string | null>(null);
   const [tripName, setTripName] = useState("");
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -284,7 +285,7 @@ export default function Results() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("saved_trips")
         .insert({
           user_id: user.id,
@@ -296,11 +297,14 @@ export default function Results() {
           budget: itinerary.budget,
           mode: itinerary.mode,
           itinerary_data: itinerary,
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       setSaved(true);
+      setSavedTripId(data?.id || null);
       setShowSaveModal(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
@@ -848,6 +852,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
               itinerary={itinerary}
               onItineraryUpdate={handleItineraryUpdate}
               onClose={() => setShowChat(false)}
+              tripId={saved ? savedTripId : undefined}
             />
           </div>
         </div>

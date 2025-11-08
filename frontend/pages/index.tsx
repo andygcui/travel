@@ -85,6 +85,7 @@ export default function Home() {
   const loadUserPreferences = async (userId: string) => {
     setLoadingPrefs(true);
     try {
+      // Load manual preferences from user_preferences table
       const { data, error } = await supabase
         .from('user_preferences')
         .select('*')
@@ -98,6 +99,35 @@ export default function Home() {
         setDislikes(data.dislikes || []);
         setDietaryRestrictions(data.dietary_restrictions || []);
         setPreferences(data.preferences || []);
+      }
+
+      // Also load chat-learned preferences
+      try {
+        const response = await fetch(`http://localhost:8000/user/preferences?user_id=${userId}`);
+        if (response.ok) {
+          const chatPrefs = await response.json();
+          
+          // Merge long-term chat preferences with manual preferences
+          if (chatPrefs.long_term && chatPrefs.long_term.length > 0) {
+            const chatLikes = chatPrefs.long_term
+              .filter((p: any) => p.preference_category === 'activity' && !p.preference_value.startsWith('avoid'))
+              .map((p: any) => p.preference_value);
+            const chatDislikes = chatPrefs.long_term
+              .filter((p: any) => p.preference_category === 'activity' && p.preference_value.startsWith('avoid'))
+              .map((p: any) => p.preference_value.replace('avoid ', ''));
+            const chatDietary = chatPrefs.long_term
+              .filter((p: any) => p.preference_category === 'dietary')
+              .map((p: any) => p.preference_value);
+            
+            // Merge with existing preferences (avoid duplicates)
+            setLikes((prev) => [...new Set([...prev, ...chatLikes])]);
+            setDislikes((prev) => [...new Set([...prev, ...chatDislikes])]);
+            setDietaryRestrictions((prev) => [...new Set([...prev, ...chatDietary])]);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading chat-learned preferences:', err);
+        // Continue even if chat preferences fail to load
       }
     } catch (err) {
       console.error('Error loading preferences:', err);
