@@ -445,46 +445,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Optimization Mode */}
-              <div className="mb-6">
-                <label className="mb-3 block text-sm font-semibold text-[#0f3d2e]">
-                  Optimization Focus
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50/70 p-4 transition hover:border-[#3cb371] cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      value="price-optimal"
-                      checked={mode === "price-optimal"}
-                      onChange={() => setMode("price-optimal")}
-                      className="h-4 w-4 text-[#3cb371] focus:ring-0"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-[#0f3d2e]">Price-Optimal</p>
-                      <p className="text-xs text-[#1b5e20]">
-                        Maximize value while preserving eco standards.
-                      </p>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-3 rounded-xl border border-green-200 bg-white p-4 transition hover:border-[#3cb371] cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      value="balanced"
-                      checked={mode === "balanced"}
-                      onChange={() => setMode("balanced")}
-                      className="h-4 w-4 text-[#3cb371] focus:ring-0"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-[#0f3d2e]">Balanced</p>
-                      <p className="text-xs text-[#1b5e20]">
-                        Harmonize indulgence, culture, and footprint.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
+              {/* Optimization Mode removed per request */}
 
               {/* Plan My Trip Button */}
               <button
