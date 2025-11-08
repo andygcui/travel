@@ -1,39 +1,19 @@
-import { useState, useEffect, useMemo } from "react";
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
-import { Bar } from "react-chartjs-2";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { supabase } from "../lib/supabase";
 import ChatPlanner from "../components/ChatPlanner";
 import ItineraryMap from "../components/ItineraryMap";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
-
-type SlotKey = "morning" | "afternoon" | "evening";
-
-interface SlotShowcase {
-  name: string;
-  description: string;
-  photos: string[];
-  reviews: POIReview[];
-  rating?: number;
-  user_ratings_total?: number;
+// Register GSAP plugin
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
 }
 
+// Types
 interface ItineraryDay {
   day: number;
   morning: string;
@@ -111,112 +91,13 @@ interface ItineraryResponse {
   day_weather?: DayWeather[];
   attractions?: PointOfInterest[];
   day_attractions?: DayAttractionBundle[];
+  preferences?: string[]; // User's selected preferences
 }
 
-function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }) {
-  const [index, setIndex] = useState(0);
-
-  if (!photos || photos.length === 0) {
-    return null;
-  }
-
-  const prev = () => setIndex((prevIndex) => (prevIndex - 1 + photos.length) % photos.length);
-  const next = () => setIndex((prevIndex) => (prevIndex + 1) % photos.length);
-
-  return (
-    <div className="group relative mt-4 overflow-hidden rounded-2xl border border-emerald-100 bg-white/80 shadow-inner shadow-emerald-200/40">
-      <img
-        src={photos[index]}
-        alt={alt}
-        className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.02]"
-        loading="lazy"
-      />
-      {photos.length > 1 && (
-        <>
-          <button
-            onClick={prev}
-            className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 px-3 py-2 text-sm text-emerald-700 shadow-md transition hover:bg-white"
-            aria-label="Previous photo"
-          >
-            ‹
-          </button>
-          <button
-            onClick={next}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 px-3 py-2 text-sm text-emerald-700 shadow-md transition hover:bg-white"
-            aria-label="Next photo"
-          >
-            ›
-          </button>
-        </>
-      )}
-      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1">
-        {photos.map((_, dotIndex) => (
-          <span
-            key={dotIndex}
-            className={`h-2 w-2 rounded-full ${
-              dotIndex === index ? "bg-emerald-500" : "bg-emerald-200"
-            }`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function POIReviews({ poi }: { poi: PointOfInterest }) {
-  if (!poi) return null;
-
-  const { reviews, rating, user_ratings_total } = poi;
-
-  if ((!reviews || reviews.length === 0) && !rating) {
-    return null;
-  }
-
-  return (
-    <div className="mt-4 space-y-3 rounded-2xl border border-emerald-100 bg-white/80 p-4 shadow-inner shadow-emerald-200/30">
-      <div className="flex items-center justify-between text-xs text-emerald-700">
-        <span className="font-semibold">
-          {poi.name} {rating ? `• ${rating.toFixed(1)}★` : ""}
-        </span>
-        {user_ratings_total !== undefined && (
-          <span>{user_ratings_total.toLocaleString()} reviews</span>
-        )}
-      </div>
-      {reviews &&
-        reviews.slice(0, 2).map((review, idx) => (
-          <div key={idx} className="rounded-xl border border-emerald-50 bg-emerald-50/50 p-3 text-xs text-emerald-800">
-            <div className="flex items-center justify-between font-semibold">
-              <span>{review.author || "Traveler"}</span>
-              {typeof review.rating === "number" && (
-                <span className="text-emerald-600">{review.rating.toFixed(1)}★</span>
-              )}
-            </div>
-            {review.text && <p className="mt-2 leading-relaxed">{review.text}</p>}
-            {review.relative_time_description && (
-              <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-emerald-500">
-                {review.relative_time_description}
-              </p>
-            )}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-// Extract place names from text descriptions
-// MOVED: This function must be defined before the component to be used in useMemo
+// Helper: Extract place names from text
 const extractPlaceNames = (text: string): string[] => {
   if (!text) return [];
-  
-  // Common patterns for place names in itinerary text:
-  // - "Visit [Place Name]"
-  // - "[Place Name] (optional description)"
-  // - "[Place Name], [description]"
-  // - Capitalized phrases that might be place names
-  
   const placeNames: string[] = [];
-  
-  // Pattern 1: "Visit [Place]" or "Explore [Place]"
   const visitPattern = /(?:visit|explore|see|tour|experience|discover|check out|head to|go to|stop at)\s+([A-Z][A-Za-z\s&'-]+?)(?:\.|,|$|and|or|for|with|to|at)/gi;
   let match;
   while ((match = visitPattern.exec(text)) !== null) {
@@ -225,26 +106,86 @@ const extractPlaceNames = (text: string): string[] => {
       placeNames.push(name);
     }
   }
-  
-  // Pattern 2: Standalone capitalized phrases (likely place names)
-  const capitalizedPattern = /\b([A-Z][A-Za-z\s&'-]{2,30})\b/g;
-  const seen = new Set(placeNames);
-  while ((match = capitalizedPattern.exec(text)) !== null) {
-    const name = match[1].trim();
-    // Skip common words and short phrases
-    if (
-      name.length > 3 &&
-      name.length < 50 &&
-      !seen.has(name) &&
-      !/^(The|A|An|And|Or|But|For|With|From|To|At|In|On|Of|By|This|That|These|Those|You|Your|We|Our|Their|His|Her|Its)$/i.test(name)
-    ) {
-      placeNames.push(name);
-      seen.add(name);
-    }
-  }
-  
-  // Remove duplicates and return
   return Array.from(new Set(placeNames)).filter((n) => n.length > 3);
+};
+
+// Helper: Generate outfit suggestions
+const generateOutfitSuggestions = (day: ItineraryDay, weather?: DayWeather): string => {
+  const activities = `${day.morning} ${day.afternoon} ${day.evening}`.toLowerCase();
+  const avgTemp = weather
+    ? (weather.morning.temperature_c + weather.afternoon.temperature_c + weather.evening.temperature_c) / 3
+    : 20;
+
+  if (activities.includes("beach") || activities.includes("swim")) {
+    return "Swimsuit, cover-up, sandals, and sun hat";
+  }
+  if (activities.includes("hiking") || activities.includes("outdoor") || activities.includes("walk")) {
+    return avgTemp > 15 ? "Light layers, comfortable walking shoes, and a hat" : "Warm layers, hiking boots, and a jacket";
+  }
+  if (activities.includes("museum") || activities.includes("gallery") || activities.includes("indoor")) {
+    return "Smart casual attire - comfortable shoes for walking";
+  }
+  if (activities.includes("restaurant") || activities.includes("dining") || activities.includes("dinner")) {
+    return "Smart casual to semi-formal depending on venue";
+  }
+  if (avgTemp > 25) {
+    return "Light, breathable clothing, sun protection, and comfortable shoes";
+  }
+  if (avgTemp < 10) {
+    return "Warm layers, jacket, and closed-toe shoes";
+  }
+  return "Comfortable layers and walking shoes";
+};
+
+// Helper: Generate packing suggestions
+const generatePackingSuggestions = (day: ItineraryDay): string[] => {
+  const activities = `${day.morning} ${day.afternoon} ${day.evening}`.toLowerCase();
+  const items: string[] = [];
+
+  if (activities.includes("outdoor") || activities.includes("hiking") || activities.includes("walk")) {
+    items.push("Sunscreen", "Hat", "Walking shoes", "Water bottle");
+  }
+  if (activities.includes("beach") || activities.includes("swim")) {
+    items.push("Swimsuit", "Towel", "Sunglasses", "Beach bag");
+  }
+  if (activities.includes("museum") || activities.includes("gallery")) {
+    items.push("Notebook", "Camera", "Comfortable shoes");
+  }
+  if (activities.includes("restaurant") || activities.includes("dining")) {
+    items.push("Smart casual attire");
+  }
+  if (activities.includes("nightlife") || activities.includes("bar")) {
+    items.push("Evening wear", "ID");
+  }
+
+  return items.length > 0 ? items : ["Comfortable clothing", "Walking shoes", "Water bottle"];
+};
+
+// Helper: Weather glyph
+const weatherGlyph = (summary: string) => {
+  const text = summary.toLowerCase();
+  if (text.includes("thunder")) return "⛈️";
+  if (text.includes("snow")) return "❄️";
+  if (text.includes("rain") || text.includes("drizzle")) return "🌧️";
+  if (text.includes("cloud")) return "☁️";
+  if (text.includes("storm")) return "🌩️";
+  if (text.includes("wind")) return "💨";
+  if (text.includes("fog") || text.includes("mist")) return "🌫️";
+  return "☀️";
+};
+
+// Helper: Format date
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+// Helper: Get average temperature for day
+const getDayTemperature = (weather?: DayWeather): number => {
+  if (!weather) return 20;
+  return Math.round((weather.morning.temperature_c + weather.afternoon.temperature_c + weather.evening.temperature_c) / 3);
 };
 
 export default function Results() {
@@ -261,17 +202,27 @@ export default function Results() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
+    const storedRequest = sessionStorage.getItem("tripRequest"); // Get preferences from request
     if (stored) {
       const parsed: ItineraryResponse = JSON.parse(stored);
+      
+      // If preferences aren't in itinerary, try to get them from stored request
+      if (!parsed.preferences && storedRequest) {
+        try {
+          const requestData = JSON.parse(storedRequest);
+          parsed.preferences = requestData.preferences || [];
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
       setItinerary(parsed);
       setCurrentDayIndex(0);
-      // Set default trip name
       setTripName(`${parsed.destination} - ${parsed.start_date || new Date().toLocaleDateString()}`);
     } else {
       router.push("/");
     }
 
-    // Check for authenticated user
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
@@ -280,8 +231,6 @@ export default function Results() {
       setUser(session?.user ?? null);
     });
   }, [router]);
-
-  // Regeneration logic removed with mode buttons
 
   const handleSaveTrip = async () => {
     if (!user || !itinerary) {
@@ -331,245 +280,416 @@ export default function Results() {
     setCurrentDayIndex(0);
   };
 
-  // Transform itinerary data into map-friendly format
-  // MOVED: This hook must be called before any early returns
-  // PRIORITY: Use structured day_attractions from backend if available, otherwise parse text
-  const attractions = useMemo(() => {
-    if (!itinerary?.days) return [];
-    
-    const out: { name: string; day: number; lat?: number; lng?: number; when?: string }[] = [];
-    
-    // FIRST: Try to use structured day_attractions from backend (has lat/lng)
-    if (itinerary.day_attractions && itinerary.day_attractions.length > 0) {
-      console.log("Using structured day_attractions from backend:", itinerary.day_attractions);
-      for (const bundle of itinerary.day_attractions) {
-        if (bundle.morning && bundle.morning.latitude && bundle.morning.longitude) {
-          out.push({
-            name: bundle.morning.name,
-            day: bundle.day,
-            lat: bundle.morning.latitude,
-            lng: bundle.morning.longitude,
-            when: "morning",
-          });
-        }
-        if (bundle.afternoon && bundle.afternoon.latitude && bundle.afternoon.longitude) {
-          out.push({
-            name: bundle.afternoon.name,
-            day: bundle.day,
-            lat: bundle.afternoon.latitude,
-            lng: bundle.afternoon.longitude,
-            when: "afternoon",
-          });
-        }
-        if (bundle.evening && bundle.evening.latitude && bundle.evening.longitude) {
-          out.push({
-            name: bundle.evening.name,
-            day: bundle.day,
-            lat: bundle.evening.latitude,
-            lng: bundle.evening.longitude,
-            when: "evening",
-          });
-        }
-      }
-      
-      // If we got structured data, return it
-      if (out.length > 0) {
-        console.log(`Found ${out.length} attractions with coordinates from day_attractions`);
-        return out;
-      }
-    } else {
-      console.log("No day_attractions found, falling back to text parsing");
-    }
-    
-    // FALLBACK: Parse text descriptions to extract place names
-    for (const day of itinerary.days) {
-      // Extract places from morning text
-      const morningPlaces = extractPlaceNames(day.morning);
-      morningPlaces.forEach((name) => {
-        out.push({ name, day: day.day, when: "morning" });
-      });
-      
-      // Extract places from afternoon text
-      const afternoonPlaces = extractPlaceNames(day.afternoon);
-      afternoonPlaces.forEach((name) => {
-        out.push({ name, day: day.day, when: "afternoon" });
-      });
-      
-      // Extract places from evening text
-      const eveningPlaces = extractPlaceNames(day.evening);
-      eveningPlaces.forEach((name) => {
-        out.push({ name, day: day.day, when: "evening" });
-      });
-    }
-    
-    // Remove duplicates (same name on same day)
-    const unique = new Map<string, typeof out[0]>();
-    out.forEach((attraction) => {
-      const key = `${attraction.name}-${attraction.day}`;
-      if (!unique.has(key)) {
-        unique.set(key, attraction);
-      }
-    });
-    
-    return Array.from(unique.values());
-  }, [itinerary]);
-
-const attractionSlots: Record<SlotKey, SlotShowcase> = useMemo(() => {
-  const base: Record<SlotKey, SlotShowcase> = {
-    morning: {
-      name: "Morning highlight",
-      description: "",
-      photos: [],
-      reviews: [],
-    },
-    afternoon: {
-      name: "Afternoon highlight",
-      description: "",
-      photos: [],
-      reviews: [],
-    },
-    evening: {
-      name: "Evening highlight",
-      description: "",
-      photos: [],
-      reviews: [],
-    },
+  // Map preference names to category keywords for filtering (moved outside to avoid hook order issues)
+  const preferenceToCategoryMap: Record<string, string[]> = {
+    food: ["restaurant", "cafe", "food", "dining", "bakery", "bar"],
+    art: ["art", "gallery", "museum", "exhibition", "cultural"],
+    outdoors: ["park", "hiking", "outdoor", "nature", "trail", "beach"],
+    history: ["museum", "historic", "monument", "heritage", "landmark"],
+    nightlife: ["bar", "club", "nightlife", "entertainment"],
+    wellness: ["spa", "wellness", "yoga", "fitness", "health"],
+    shopping: ["shopping", "market", "mall", "boutique", "store"],
+    adventure: ["adventure", "sports", "activity", "outdoor"],
   };
 
-  if (!itinerary || !itinerary.days || itinerary.days.length === 0) {
-    return base;
-  }
+  // Get attractions for current day only (max 3)
+  const currentDayAttractions = useMemo(() => {
+    if (!itinerary?.day_attractions) return [];
+    const bundle = itinerary.day_attractions.find((b) => b.day === itinerary.days[currentDayIndex]?.day);
+    if (!bundle) return [];
 
-  const safeIndex = Math.min(currentDayIndex, itinerary.days.length - 1);
-  const day = itinerary.days[safeIndex];
-  const bundle = itinerary.day_attractions?.find((item) => item.day === day.day);
+    const attractions: { name: string; day: number; lat?: number; lng?: number; when?: string }[] = [];
+    if (bundle.morning && bundle.morning.latitude && bundle.morning.longitude) {
+      attractions.push({
+        name: bundle.morning.name,
+        day: bundle.day,
+        lat: bundle.morning.latitude,
+        lng: bundle.morning.longitude,
+        when: "morning",
+      });
+    }
+    if (bundle.afternoon && bundle.afternoon.latitude && bundle.afternoon.longitude) {
+      attractions.push({
+        name: bundle.afternoon.name,
+        day: bundle.day,
+        lat: bundle.afternoon.latitude,
+        lng: bundle.afternoon.longitude,
+        when: "afternoon",
+      });
+    }
+    if (bundle.evening && bundle.evening.latitude && bundle.evening.longitude) {
+      attractions.push({
+        name: bundle.evening.name,
+        day: bundle.day,
+        lat: bundle.evening.latitude,
+        lng: bundle.evening.longitude,
+        when: "evening",
+      });
+    }
+    return attractions.slice(0, 3); // Max 3 markers
+  }, [itinerary, currentDayIndex]);
 
-  base.morning.description = day.morning;
-  base.afternoon.description = day.afternoon;
-  base.evening.description = day.evening;
+  // Get non-selected preference categories for "Explore More Options"
+  const exploreMoreOptions = useMemo(() => {
+    if (!itinerary || !itinerary.attractions || itinerary.attractions.length === 0) return [];
+    
+    const selectedPrefs = (itinerary.preferences || []).map((p) => p.toLowerCase());
+    const allPrefs = Object.keys(preferenceToCategoryMap);
+    const nonSelectedPrefs = allPrefs.filter((p) => !selectedPrefs.includes(p.toLowerCase()));
 
-  const poiCandidates: PointOfInterest[] = [];
-  if (bundle?.morning) poiCandidates.push(bundle.morning);
-  if (bundle?.afternoon) poiCandidates.push(bundle.afternoon);
-  if (bundle?.evening) poiCandidates.push(bundle.evening);
-  if (itinerary.attractions) {
-    poiCandidates.push(...itinerary.attractions);
-  }
+    // Helper to normalize name for comparison (remove extra spaces, lowercase, trim)
+    const normalizeName = (name: string): string => {
+      return (name || "").toLowerCase().trim().replace(/\s+/g, " ");
+    };
 
-  (["morning", "afternoon", "evening"] as SlotKey[]).forEach((slot) => {
-    const text = day[slot];
-    const namesFromText = extractPlaceNames(text);
-
-    let matched: PointOfInterest | undefined = bundle?.[slot] ?? undefined;
-
-    if (!matched && namesFromText.length > 0) {
-      const targetName = namesFromText[0].toLowerCase();
-      matched = poiCandidates.find((poi) => poi.name?.toLowerCase().includes(targetName));
+    // STEP 1: Collect ALL place names already in the day-to-day itinerary
+    const placesInItinerary = new Set<string>();
+    
+    // From day_attractions (structured POI data)
+    if (itinerary.day_attractions) {
+      itinerary.day_attractions.forEach((bundle) => {
+        if (bundle.morning?.name) placesInItinerary.add(normalizeName(bundle.morning.name));
+        if (bundle.afternoon?.name) placesInItinerary.add(normalizeName(bundle.afternoon.name));
+        if (bundle.evening?.name) placesInItinerary.add(normalizeName(bundle.evening.name));
+      });
+    }
+    
+    // From days text (extract place names from morning/afternoon/evening text)
+    if (itinerary.days) {
+      itinerary.days.forEach((day) => {
+        if (day.morning) {
+          const names = extractPlaceNames(day.morning);
+          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
+        }
+        if (day.afternoon) {
+          const names = extractPlaceNames(day.afternoon);
+          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
+        }
+        if (day.evening) {
+          const names = extractPlaceNames(day.evening);
+          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
+        }
+      });
     }
 
-    if (!matched) {
-      matched = poiCandidates.find((poi) =>
-        text.toLowerCase().includes((poi.name ?? "").toLowerCase())
-      );
+    // STEP 2: Get all attractions and filter out:
+    // - Attractions that match selected preferences
+    // - Attractions already in the day-to-day itinerary
+    const allAttractions = itinerary.attractions || [];
+    
+    const filteredAttractions = allAttractions.filter((attraction) => {
+      const normalizedAttName = normalizeName(attraction.name);
+      
+      // Exclude if already in itinerary
+      if (placesInItinerary.has(normalizedAttName)) {
+        return false;
+      }
+      
+      // Exclude if matches selected preferences
+      const category = (attraction.category || "").toLowerCase();
+      const name = (attraction.name || "").toLowerCase();
+      const description = (attraction.description || "").toLowerCase();
+      const searchText = `${category} ${name} ${description}`;
+
+      const matchesSelected = selectedPrefs.some((pref) => {
+        const keywords = preferenceToCategoryMap[pref] || [];
+        return keywords.some((keyword) => searchText.includes(keyword));
+      });
+
+      return !matchesSelected;
+    });
+
+    // STEP 3: STRICT deduplication
+    const uniqueAttractions = new Map<string, PointOfInterest>();
+    const seenNames = new Set<string>();
+    
+    filteredAttractions.forEach((att) => {
+      const normalizedName = normalizeName(att.name);
+      // Double-check: not in itinerary and not already seen
+      if (!placesInItinerary.has(normalizedName) && !seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        uniqueAttractions.set(normalizedName, att);
+      }
+    });
+
+    let result = Array.from(uniqueAttractions.values());
+
+    // STEP 4: If we don't have enough, try to get from non-selected preference categories
+    if (result.length < 6 && nonSelectedPrefs.length > 0) {
+      const nonSelectedAttractions = allAttractions.filter((attraction) => {
+        const normalizedAttName = normalizeName(attraction.name);
+        
+        // Exclude if already in itinerary or already seen
+        if (placesInItinerary.has(normalizedAttName) || seenNames.has(normalizedAttName)) {
+          return false;
+        }
+        
+        const category = (attraction.category || "").toLowerCase();
+        const name = (attraction.name || "").toLowerCase();
+        const description = (attraction.description || "").toLowerCase();
+        const searchText = `${category} ${name} ${description}`;
+
+        const matchesNonSelected = nonSelectedPrefs.some((pref) => {
+          const keywords = preferenceToCategoryMap[pref] || [];
+          return keywords.some((keyword) => searchText.includes(keyword));
+        });
+
+        return matchesNonSelected;
+      });
+
+      // Add non-selected attractions, STRICTLY avoiding duplicates and itinerary places
+      nonSelectedAttractions.forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!placesInItinerary.has(normalizedName) && !seenNames.has(normalizedName)) {
+          seenNames.add(normalizedName);
+          uniqueAttractions.set(normalizedName, att);
+        }
+      });
+
+      result = Array.from(uniqueAttractions.values());
     }
 
-    if (matched) {
-      base[slot] = {
-        name: matched.name || namesFromText[0] || `${slot} experience`,
-        description: text,
-        photos: matched.photo_urls ?? [],
-        reviews: matched.reviews ?? [],
-        rating: matched.rating ?? undefined,
-        user_ratings_total: matched.user_ratings_total ?? undefined,
-      };
-    } else if (namesFromText.length > 0) {
-      base[slot] = {
-        name: namesFromText[0],
-        description: text,
-        photos: [],
-        reviews: [],
-      };
-    } else {
-      base[slot] = {
-        name: `${slot} experience`,
-        description: text,
-        photos: [],
-        reviews: [],
-      };
+    // STEP 5: Ensure variety: try to get attractions from different categories
+    const categorized: Record<string, PointOfInterest[]> = {};
+    result.forEach((att) => {
+      const category = (att.category || "other").toLowerCase();
+      if (!categorized[category]) {
+        categorized[category] = [];
+      }
+      categorized[category].push(att);
+    });
+
+    // STEP 6: Prioritize variety: take max 2 from each category
+    const varied: PointOfInterest[] = [];
+    const seenInVaried = new Set<string>();
+    const categoryKeys = Object.keys(categorized);
+    let categoryIndex = 0;
+    
+    while (varied.length < 6 && categoryKeys.length > 0) {
+      const category = categoryKeys[categoryIndex % categoryKeys.length];
+      if (categorized[category] && categorized[category].length > 0) {
+        const taken = varied.filter((a) => (a.category || "").toLowerCase() === category).length;
+        if (taken < 2) {
+          const nextAtt = categorized[category].shift()!;
+          const normalizedName = normalizeName(nextAtt.name);
+          // Triple-check: not in itinerary, not already in varied
+          if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
+            seenInVaried.add(normalizedName);
+            varied.push(nextAtt);
+          }
+        } else {
+          delete categorized[category];
+          categoryKeys.splice(categoryKeys.indexOf(category), 1);
+          if (categoryKeys.length === 0) break;
+        }
+      }
+      categoryIndex++;
+      if (categoryIndex > 100) break; // Safety break
     }
-  });
 
-  return base;
-}, [currentDayIndex, itinerary]);
+    // STEP 7: Fill remaining slots if needed - STRICTLY check for duplicates and itinerary places
+    if (varied.length < 6) {
+      const remaining = result.filter((att) => {
+        const normalizedName = normalizeName(att.name);
+        return !placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName);
+      });
+      remaining.slice(0, 6 - varied.length).forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
+          seenInVaried.add(normalizedName);
+          varied.push(att);
+        }
+      });
+    }
 
-  // MOVED: Early return check moved to JSX render instead
-  // All hooks must be called before any conditional returns
+    // STEP 8: FALLBACK - If we still don't have enough (at least 3), be less strict
+    // Allow selected preferences, but still exclude itinerary places and duplicates
+    if (varied.length < 3) {
+      const fallbackAttractions = allAttractions.filter((attraction) => {
+        const normalizedAttName = normalizeName(attraction.name);
+        // Only exclude if in itinerary or already seen
+        return !placesInItinerary.has(normalizedAttName) && !seenInVaried.has(normalizedAttName);
+      });
+
+      // Deduplicate fallback
+      const fallbackUnique = new Map<string, PointOfInterest>();
+      fallbackAttractions.forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!fallbackUnique.has(normalizedName)) {
+          fallbackUnique.set(normalizedName, att);
+        }
+      });
+
+      const fallbackList = Array.from(fallbackUnique.values());
+      
+      // Add up to 6 total (fill remaining slots)
+      fallbackList.slice(0, 6 - varied.length).forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
+          seenInVaried.add(normalizedName);
+          varied.push(att);
+        }
+      });
+    }
+
+    // STEP 9: Final fallback - if still less than 3, just get any unique attractions not in itinerary
+    if (varied.length < 3) {
+      const finalFallback = allAttractions.filter((attraction) => {
+        const normalizedAttName = normalizeName(attraction.name);
+        return !placesInItinerary.has(normalizedAttName);
+      });
+
+      const finalUnique = new Map<string, PointOfInterest>();
+      finalFallback.forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!finalUnique.has(normalizedName) && !seenInVaried.has(normalizedName)) {
+          finalUnique.set(normalizedName, att);
+        }
+      });
+
+      const finalList = Array.from(finalUnique.values());
+      finalList.slice(0, Math.max(3, 6 - varied.length)).forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!seenInVaried.has(normalizedName)) {
+          seenInVaried.add(normalizedName);
+          varied.push(att);
+        }
+      });
+    }
+
+    // Ensure we return at least what we have (up to 6), but try to get at least 3
+    // If we have less than 3, return what we have (could be 0-2)
+    // If we have 3 or more, return up to 6
+    if (varied.length === 0 && allAttractions.length > 0) {
+      // Last resort: return first 3-6 unique attractions (excluding itinerary only)
+      const lastResort = allAttractions
+        .filter((att) => !placesInItinerary.has(normalizeName(att.name)))
+        .slice(0, 6);
+      const lastResortUnique = new Map<string, PointOfInterest>();
+      lastResort.forEach((att) => {
+        const normalizedName = normalizeName(att.name);
+        if (!lastResortUnique.has(normalizedName)) {
+          lastResortUnique.set(normalizedName, att);
+        }
+      });
+      return Array.from(lastResortUnique.values()).slice(0, 6);
+    }
+    
+    return varied.slice(0, Math.min(6, varied.length));
+  }, [itinerary]);
+
+  // GSAP Animations
+  useEffect(() => {
+    if (typeof window === "undefined" || !itinerary) return;
+
+    const fadeUp = (target: string, delay = 0, y = 60) => {
+      gsap.from(target, {
+        opacity: 0,
+        y,
+        duration: 1,
+        delay,
+        ease: "power2.out",
+        scrollTrigger: {
+          trigger: target,
+          start: "top 80%",
+          end: "bottom 60%",
+          toggleActions: "play none none reverse",
+        },
+      });
+    };
+
+    fadeUp(".summary-card", 0.1);
+    fadeUp(".flight-section", 0.2);
+    fadeUp(".accommodation-section", 0.3);
+    fadeUp(".map-section", 0.4, 40);
+    fadeUp(".day-itinerary", 0.4, 40); // Same delay as map-section
+    fadeUp(".outfit-section", 0.6, 40);
+
+    gsap.utils.toArray(".scroll-fade").forEach((el: any, i: number) => {
+      gsap.from(el, {
+        opacity: 0,
+        y: 40,
+        duration: 1.2,
+        delay: i * 0.1,
+        scrollTrigger: {
+          trigger: el,
+          start: "top 90%",
+          toggleActions: "play none none reverse",
+        },
+      });
+    });
+
+    // Horizontal scroll fade for flight cards
+    gsap.utils.toArray(".flight-card").forEach((el: any, i: number) => {
+      gsap.from(el, {
+        opacity: 0,
+        x: 80,
+        duration: 1,
+        delay: i * 0.1,
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+      });
+    });
+
+    // Staggered accommodation cards
+    gsap.utils.toArray(".accommodation-card").forEach((el: any, i: number) => {
+      gsap.from(el, {
+        opacity: 0,
+        y: 60,
+        duration: 1.2,
+        delay: i * 0.15,
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+      });
+    });
+
+    return () => {
+      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+    };
+  }, [itinerary]);
+
   if (!itinerary) {
-    return <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-900">Loading your journey...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-emerald-50 text-emerald-900">
+        Loading your journey...
+      </div>
+    );
   }
 
   const currentDay = itinerary.days[currentDayIndex];
   const currentWeather = itinerary.day_weather?.[currentDayIndex];
-  const dayBundle = itinerary.day_attractions?.find((bundle) => bundle.day === currentDay.day);
-  const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
-  const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
+  const dayTemperature = getDayTemperature(currentWeather);
+  const dayWeatherGlyph = currentWeather ? weatherGlyph(currentWeather.afternoon.summary) : "☀️";
 
   const currency = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
   });
 
-const formatPrice = (amount: number, currencyCode?: string) => {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currencyCode || "USD",
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
-};
-
-const formatDateTime = (value?: string) => {
-  if (!value) return "Schedule pending";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-};
-
-const weatherGlyph = (summary: string) => {
-  const text = summary.toLowerCase();
-  if (text.includes("thunder")) return "⛈️";
-  if (text.includes("snow")) return "❄️";
-  if (text.includes("rain") || text.includes("drizzle")) return "🌧️";
-  if (text.includes("cloud")) return "☁️";
-  if (text.includes("storm")) return "🌩️";
-  if (text.includes("wind")) return "💨";
-  if (text.includes("fog") || text.includes("mist")) return "🌫️";
-  return "☀️";
-};
-
-const buildWeatherTooltip = (weather?: DaypartWeather) => {
-  if (!weather) return "";
-  return `${weather.summary} • ${Math.round(weather.temperature_c)}°C • ${Math.round(
-    weather.precipitation_probability * 100
-  )}% chance of precipitation`;
-};
-
-  // MOVED: comparisonData computed after early return check (not a hook, so safe)
-  const comparisonData = {
-    labels: ["Cost (x100)", "Emissions (kg CO₂)", "Eco Score"],
-    datasets: [
-      {
-        label: itinerary.mode === "price-optimal" ? "Price-Optimal" : "Balanced",
-        data: [itinerary.totals.cost / 100, itinerary.totals.emissions_kg, itinerary.eco_score || 0],
-        backgroundColor: "rgba(16, 185, 129, 0.55)",
-        borderColor: "rgba(5, 150, 105, 1)",
-        borderWidth: 2,
-      },
-    ],
+  const formatPrice = (amount: number, currencyCode?: string) => {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: currencyCode || "USD",
+      }).format(amount);
+    } catch {
+      return `$${amount.toFixed(2)}`;
+    }
   };
 
-  // Build unique key for flight comparison (ignore server-generated id)
+  const formatDateTime = (value?: string) => {
+    if (!value) return "Schedule pending";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  };
+
+  // Get unique flights
   const flightKey = (f: FlightOption) =>
     `${f.carrier}|${f.origin}|${f.destination}|${f.departure}|${f.arrival}|${Math.round((f.price || 0) * 100)}`;
 
@@ -585,369 +705,419 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
     return out;
   };
 
+  const ecoFlights = itinerary.flights
+    ? getUniqueByKey([...itinerary.flights].sort((a, b) => (a.emissions_kg ?? Infinity) - (b.emissions_kg ?? Infinity)))
+    : [];
+
+  const priceFlights = itinerary.flights
+    ? getUniqueByKey([...itinerary.flights].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)))
+    : [];
+
+  const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
+  const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-950">
-      <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="group flex items-center gap-3 rounded-xl p-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            aria-label="Back to planner"
-          >
-            <div className="text-left">
-              <span className="text-2xl font-bold text-[#3cb371] transition duration-300 group-hover:text-[#2ea55f]">
-                GreenTrip
-              </span>
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500 transition group-hover:text-emerald-600">
-                TripSmith • Results
-              </p>
-              <h1 className="text-xl font-medium text-emerald-900 transition duration-300 group-hover:text-emerald-800 md:text-2xl">
-                Journey Report
-              </h1>
-            </div>
-          </button>
-          <div className="flex items-center gap-3 text-sm text-emerald-700">
-            {user && (
-              <button
-                onClick={handleSaveTrip}
-                disabled={saving || saved}
-                className={`rounded-full px-4 py-2 font-medium transition ${
-                  saved
-                    ? "bg-emerald-500 text-white"
-                    : "border border-emerald-200 hover:border-emerald-300 hover:text-emerald-900"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save Trip"}
-              </button>
-            )}
-            {!user && (
-              <button
-                onClick={() => setShowSaveModal(true)}
-                className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900"
-              >
-                💾 Save Trip
-              </button>
-            )}
+    <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-emerald-50">
+      {/* Header */}
+      <header className="border-b border-emerald-100/50 bg-white/60 backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-6 py-4 md:px-12">
+          <div className="flex items-center justify-between">
             <button
               onClick={() => router.push("/")}
-              className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900"
+              className="text-2xl font-bold text-[#0b3d2e] transition hover:text-[#2d6a4f]"
             >
-              Plan another trip ↗
+              GreenTrip
             </button>
+            <div className="flex items-center gap-3">
+              {user && (
+                <button
+                  onClick={handleSaveTrip}
+                  disabled={saving || saved}
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    saved
+                      ? "bg-emerald-500 text-white"
+                      : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <main
-        className={`mx-auto px-6 py-10 transition-all ${
-          showChat ? "max-w-[calc(100%-24rem)] min-w-0" : "max-w-6xl"
-        }`}
-      >
-        <section className="grid gap-10">
-          <div className="space-y-6">
-            <div className="rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-xl shadow-emerald-200/50">
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Your itinerary</p>
-              <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-3xl font-medium tracking-tight text-emerald-950">
-                    {itinerary.destination}
-                  </h2>
-                  <p className="text-sm text-emerald-700">
-                    {itinerary.num_days} days
-                  </p>
-                </div>
-                <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700">
-              Budget: {currency.format(itinerary.budget)}
-                </div>
-              </div>
-            </div>
+      <main className="mx-auto max-w-7xl px-6 py-12 md:px-12">
+        {/* Page Header */}
+        <section className="mb-16 text-center">
+          <p className="text-sm uppercase tracking-[0.3em] text-emerald-600/70">Your Trip To</p>
+          <h1 className="mt-2 text-5xl font-bold uppercase tracking-tight text-[#0b3d2e] md:text-6xl">
+            {itinerary.destination.toUpperCase()}
+          </h1>
+        </section>
 
-            {/* Optimized Flights Section */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                Eco-Friendly Flights (sorted by lowest CO₂)
-              </h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                {itinerary.flights && itinerary.flights.length > 0 ? (
-                  getUniqueByKey(
-                    [...itinerary.flights].sort(
-                      (a, b) => (a.emissions_kg ?? Number.POSITIVE_INFINITY) - (b.emissions_kg ?? Number.POSITIVE_INFINITY)
-                    )
-                  ).map((flight, index) => (
-                      <div
-                        key={flight.id || `eco-${index}`}
-                        className="relative rounded-2xl border border-emerald-100 bg-white/95 p-5 shadow-lg shadow-emerald-200/40"
-                      >
-                        <div className="flex items-center justify-between text-sm text-emerald-800">
-                          <span className="font-semibold">
-                            {flight.origin} → {flight.destination}
-                          </span>
-                          <span>{formatPrice(flight.price, flight.currency)}</span>
-                        </div>
-                        <p className="mt-2 text-xs text-emerald-600">
-                          {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)}
-                        </p>
-                        <div className="mt-3 flex items-center justify-between text-xs">
-                          <span className="font-medium text-emerald-700">{flight.carrier}</span>
-                          <span className="rounded-full border border-emerald-200 px-2 py-1 text-emerald-600">
-                            CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xs text-emerald-600">Eco score: {flight.eco_score ?? "N/A"}</div>
-                      </div>
-                    ))
-                ) : (
-                  <div className="rounded-2xl border border-emerald-100 bg-white/90 p-6 text-sm text-emerald-700">
-                    Flight details will appear here once available.
-                  </div>
-                )}
-              </div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600 mt-8">
-                Price-Optimized Flights (sorted by lowest price)
-              </h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                {itinerary.flights && itinerary.flights.length > 0 ? (
-                  getUniqueByKey(
-                    [...itinerary.flights].sort(
-                      (a, b) => (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY)
-                    )
-                  ).map((flight, index) => (
-                      <div
-                        key={flight.id || `price-${index}`}
-                        className="relative rounded-2xl border border-emerald-100 bg-white/95 p-5 shadow-lg shadow-emerald-200/40"
-                      >
-                        <div className="flex items-center justify-between text-sm text-emerald-800">
-                          <span className="font-semibold">
-                            {flight.origin} → {flight.destination}
-                          </span>
-                          <span>{formatPrice(flight.price, flight.currency)}</span>
-                        </div>
-                        <p className="mt-2 text-xs text-emerald-600">
-                          {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)}
-                        </p>
-                        <div className="mt-3 flex items-center justify-between text-xs">
-                          <span className="font-medium text-emerald-700">{flight.carrier}</span>
-                          <span className="rounded-full border border-emerald-200 px-2 py-1 text-emerald-600">
-                            Price: {formatPrice(flight.price, flight.currency)}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xs text-emerald-600">CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg • Eco score: {flight.eco_score ?? "N/A"}</div>
-                      </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-emerald-100 bg-white/90 p-6 text-sm text-emerald-700">
-                    Flight details will appear here once available.
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Summary Row */}
+        <section className="mb-20 grid gap-6 md:grid-cols-3">
+          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Total Spend</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">{currency.format(itinerary.totals.cost)}</p>
+            <p className="mt-2 text-sm text-emerald-600/80">Budget: {currency.format(itinerary.budget)}</p>
           </div>
-
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
-                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Total spend</p>
-                <p className="mt-3 text-3xl font-medium text-emerald-900">
-                  {currency.format(itinerary.totals.cost)}
-                </p>
-                <p className="mt-2 text-xs text-emerald-600">Includes flights, lodging, and curated experiences.</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
-                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Estimated CO₂</p>
-                <p className="mt-3 text-3xl font-medium text-orange-600">
-              {itinerary.totals.emissions_kg.toFixed(1)} kg
+          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Estimated CO₂</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">{itinerary.totals.emissions_kg.toFixed(1)} kg</p>
+            <p className="mt-2 text-sm text-emerald-600/80">+ eco points</p>
+          </div>
+          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Duration</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">{itinerary.num_days} days</p>
+            <p className="mt-2 text-sm text-emerald-600/80">
+              {itinerary.start_date && itinerary.end_date
+                ? `${formatDate(itinerary.start_date)} – ${formatDate(itinerary.end_date)}`
+                : "Dates TBD"}
             </p>
-                <p className="mt-2 text-xs text-emerald-600">Offset options available via Climatiq partners.</p>
           </div>
-        </div>
+        </section>
 
-            <div className="rounded-3xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                Footprint overview
-              </h3>
-              <div className="mt-4">
-            <Bar
-              data={comparisonData}
-              options={{
-                responsive: true,
-                plugins: {
-                  legend: { display: false },
-                  title: { display: false },
-                },
-                scales: {
-                  y: { beginAtZero: true },
-                },
-              }}
-            />
-          </div>
+        {/* Flight Options */}
+        <section className="flight-section mb-20">
+          <h2 className="mb-6 text-2xl font-bold text-[#0b3d2e]">Flight Options</h2>
+          
+          {/* Eco-Optimized */}
+          <div className="mb-8">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Eco-Optimized</h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+              {ecoFlights.length > 0 ? (
+                ecoFlights.map((flight, idx) => (
+                  <div
+                    key={flight.id || `eco-${idx}`}
+                    className="flight-card flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-[#0b3d2e]">
+                        {flight.origin} → {flight.destination}
+                      </span>
+                      <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-700">
+                        Eco
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-600/80 mb-3">{formatDateTime(flight.departure)}</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-700">{flight.carrier}</span>
+                      <span className="font-bold text-[#0b3d2e]">{formatPrice(flight.price, flight.currency)}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-emerald-600/80">
+                      CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                  Flight details coming soon
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="rounded-3xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                Concierge rationale
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-emerald-800">{itinerary.rationale}</p>
+          {/* Price-Optimized */}
+          <div>
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Price-Optimized</h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+              {priceFlights.length > 0 ? (
+                priceFlights.map((flight, idx) => (
+                  <div
+                    key={flight.id || `price-${idx}`}
+                    className="flight-card flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-[#0b3d2e]">
+                        {flight.origin} → {flight.destination}
+                      </span>
+                      <span className="rounded-full bg-gray-200/50 px-3 py-1 text-xs font-medium text-gray-700">
+                        Price
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-600/80 mb-3">{formatDateTime(flight.departure)}</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-700">{flight.carrier}</span>
+                      <span className="font-bold text-[#0b3d2e]">{formatPrice(flight.price, flight.currency)}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-emerald-600/80">
+                      CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                  Flight details coming soon
+                </div>
+              )}
             </div>
           </div>
         </section>
 
-        <section className="mt-12 rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-2xl shadow-emerald-200/50">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600 mb-6">
-            Your day-by-day immersion
-          </h3>
-          <div className="mb-6 rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-md shadow-emerald-200/40">
-            <h4 className="text-xs uppercase tracking-[0.3em] text-emerald-500 mb-3">
-              Interactive Map
-            </h4>
-            {attractions.length > 0 ? (
-              <ItineraryMap destination={itinerary.destination} attractions={attractions} />
+        {/* Accommodations */}
+        <section className="accommodation-section mb-20">
+          <h2 className="mb-6 text-2xl font-bold text-[#0b3d2e]">Where You'll Stay</h2>
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+            {itinerary.attractions && itinerary.attractions.length > 0 ? (
+              itinerary.attractions
+                .filter((a) => a.category?.toLowerCase().includes("lodging") || a.category?.toLowerCase().includes("hotel"))
+                .slice(0, 5)
+                .map((attraction, idx) => (
+                  <div
+                    key={idx}
+                    className="accommodation-card flex-shrink-0 w-72 bg-white/60 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/10 shadow-sm hover:shadow-xl hover:scale-[1.03] transition-all"
+                  >
+                    {attraction.photo_urls && attraction.photo_urls[0] && (
+                      <img
+                        src={attraction.photo_urls[0]}
+                        alt={attraction.name}
+                        className="w-full h-40 object-cover"
+                      />
+                    )}
+                    <div className="p-4">
+                      <h3 className="font-semibold text-[#0b3d2e] mb-1">{attraction.name}</h3>
+                      {attraction.rating && (
+                        <p className="text-sm text-emerald-600/80 mb-2">⭐ {attraction.rating.toFixed(1)}</p>
+                      )}
+                      <p className="text-xs text-emerald-600/70">{attraction.description || "Accommodation details"}</p>
+                    </div>
+                  </div>
+                ))
             ) : (
-              <div className="flex h-[500px] w-full items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50/80 text-sm text-emerald-600">
-                <div className="text-center">
-                  <p className="font-medium text-emerald-700">No attractions found</p>
-                  <p className="mt-2 text-xs text-emerald-500">
-                    The itinerary will be displayed on the map once place names are detected.
-                  </p>
-                </div>
+              <div className="w-72 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                Accommodation details coming soon
               </div>
             )}
           </div>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        </section>
+
+        {/* Interactive Map */}
+        <section className="map-section mb-20">
+          <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm">
+            {currentDayAttractions.length > 0 ? (
+              <ItineraryMap destination={itinerary.destination} attractions={currentDayAttractions} />
+            ) : (
+              <div className="flex h-[500px] items-center justify-center rounded-xl bg-emerald-50/50 text-emerald-600/80">
+                <p>Map will display when attractions are available</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Day-by-Day Itinerary */}
+        <section className="mb-20">
+          <h2 className="mb-8 text-2xl font-bold text-[#0b3d2e]">Day-by-Day Plans</h2>
+
+          {/* Day Selector */}
+          <div className="mb-8 flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Day selector</p>
-              <h4 className="mt-1 text-lg font-medium text-emerald-900">
-                Day {currentDay.day} of {itinerary.days.length}
-              </h4>
-        </div>
-            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-[#0b3d2e]">
+                Day {currentDay.day} · {itinerary.start_date ? formatDate(itinerary.start_date) : `Day ${currentDay.day}`}
+              </h3>
+            </div>
+            {currentWeather && (
+              <div className="flex items-center gap-2 rounded-full bg-white/60 backdrop-blur-xl px-4 py-2 border border-white/10">
+                <span className="text-xl">{dayWeatherGlyph}</span>
+                <span className="text-sm font-medium text-[#0b3d2e]">{dayTemperature}°C</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
               <button
                 onClick={goPrevDay}
                 disabled={currentDayIndex === 0}
-                className="rounded-full border border-emerald-200 px-3 py-2 text-sm text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Previous day"
+                className="rounded-full border border-emerald-200 bg-white/60 px-4 py-2 text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ‹
               </button>
+              <span className="text-sm text-emerald-600/80">
+                {currentDayIndex + 1} / {itinerary.days.length}
+              </span>
               <button
                 onClick={goNextDay}
                 disabled={currentDayIndex === itinerary.days.length - 1}
-                className="rounded-full border border-emerald-200 px-3 py-2 text-sm text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Next day"
+                className="rounded-full border border-emerald-200 bg-white/60 px-4 py-2 text-emerald-700 transition hover:border-emerald-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ›
               </button>
             </div>
           </div>
-          <div className="mt-6 space-y-4">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-sm shadow-emerald-200/30">
-              <div className="grid gap-6 md:grid-cols-3">
-                  <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Morning</p>
-                  <p className="mt-2 text-sm text-emerald-800">{currentDay.morning}</p>
-                  {currentWeather?.morning && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
-                      <span className="text-lg">{weatherGlyph(currentWeather.morning.summary)}</span>
-                      <span>{Math.round(currentWeather.morning.temperature_c)}°C</span>
-                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
-                        {buildWeatherTooltip(currentWeather.morning)}
-                      </div>
-                    </div>
-                  )}
+
+          {/* Day Activities - Horizontal Layout */}
+          <div className="day-itinerary grid gap-6 md:grid-cols-3">
+            {(["morning", "afternoon", "evening"] as const).map((slot) => {
+              const bundle = itinerary.day_attractions?.find((b) => b.day === currentDay.day);
+              const poi = bundle?.[slot];
+              const text = currentDay[slot];
+
+              return (
+                <div
+                  key={slot}
+                  className="scroll-fade bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm"
+                >
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                    {slot}
                   </div>
-                  <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
-                  <p className="mt-2 text-sm text-emerald-800">{currentDay.afternoon}</p>
-                  {currentWeather?.afternoon && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
-                      <span className="text-lg">
-                        {weatherGlyph(currentWeather.afternoon.summary)}
-                      </span>
-                      <span>{Math.round(currentWeather.afternoon.temperature_c)}°C</span>
-                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
-                        {buildWeatherTooltip(currentWeather.afternoon)}
-                      </div>
-                    </div>
+                  <h4 className="mb-2 text-lg font-semibold text-[#0b3d2e]">{poi?.name || extractPlaceNames(text)[0] || `${slot} Activity`}</h4>
+                  <p className="mb-4 text-sm text-emerald-800/80 leading-relaxed">{text}</p>
+                  {poi?.photo_urls && poi.photo_urls[0] && (
+                    <img
+                      src={poi.photo_urls[0]}
+                      alt={poi.name}
+                      className="mb-4 h-48 w-full rounded-xl object-cover"
+                    />
                   )}
-                  </div>
-                  <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
-                  <p className="mt-2 text-sm text-emerald-800">{currentDay.evening}</p>
-                  {currentWeather?.evening && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
-                      <span className="text-lg">{weatherGlyph(currentWeather.evening.summary)}</span>
-                      <span>{Math.round(currentWeather.evening.temperature_c)}°C</span>
-                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
-                        {buildWeatherTooltip(currentWeather.evening)}
-                      </div>
-                    </div>
+                  {poi?.rating && (
+                    <p className="text-sm text-emerald-600/80">⭐ {poi.rating.toFixed(1)} / 5.0</p>
                   )}
                 </div>
-              </div>
+              );
+            })}
+          </div>
+
+          {/* What to Bring + Outfit Suggestions */}
+          <div className="outfit-section mt-8 grid gap-6 md:grid-cols-2">
+            <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm">
+              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">What to Bring</h4>
+              <ul className="space-y-2">
+                {generatePackingSuggestions(currentDay).map((item, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-sm text-emerald-800/80">
+                    <span>✓</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm">
+              <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Suggested Outfit</h4>
+              <p className="text-sm text-emerald-800/80 leading-relaxed">
+                {generateOutfitSuggestions(currentDay, currentWeather)}
+              </p>
             </div>
           </div>
         </section>
 
-        <section className="mt-12 space-y-6">
-          <div className="rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-2xl shadow-emerald-200/50">
-            <h3 className="mb-6 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-              Explore more options
-            </h3>
-            <div className="grid gap-6 md:grid-cols-3">
-              {(["morning", "afternoon", "evening"] as SlotKey[]).map((slot) => {
-                const showcase = attractionSlots[slot];
-                const reviewCount = showcase.reviews.length;
-                const averageRating =
-                  showcase.rating ??
-                  (reviewCount
-                    ? showcase.reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount
-                    : undefined);
+        {/* Explore More Options */}
+        <section className="mb-20">
+          <h2 className="mb-8 text-2xl font-bold text-[#0b3d2e]">Explore More Options</h2>
+          <div className="relative">
+            {/* Scroll Buttons */}
+            <button
+              onClick={(e) => {
+                const container = e.currentTarget.parentElement?.querySelector('.scroll-container');
+                if (container) {
+                  container.scrollBy({ left: -320, behavior: 'smooth' });
+                }
+              }}
+              className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 backdrop-blur-sm p-3 shadow-lg transition hover:bg-white hover:shadow-xl"
+              aria-label="Scroll left"
+            >
+              ‹
+            </button>
+            <button
+              onClick={(e) => {
+                const container = e.currentTarget.parentElement?.querySelector('.scroll-container');
+                if (container) {
+                  container.scrollBy({ left: 320, behavior: 'smooth' });
+                }
+              }}
+              className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 backdrop-blur-sm p-3 shadow-lg transition hover:bg-white hover:shadow-xl"
+              aria-label="Scroll right"
+            >
+              ›
+            </button>
+            
+            <div className="scroll-container flex gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth px-12">
+              {exploreMoreOptions && exploreMoreOptions.length > 0 ? (
+                exploreMoreOptions.map((attraction, idx) => {
+                  const reviewCount = attraction.reviews?.length || 0;
+                  const averageRating =
+                    attraction.rating ??
+                    (reviewCount
+                      ? (attraction.reviews || []).reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount
+                      : undefined);
 
-                return (
-                  <div
-                    key={slot}
-                    className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-6"
-                  >
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-emerald-500">
-                      <span>{showcase.name}</span>
-                    </div>
-                    {showcase.photos.length > 0 ? (
-                      <PhotoCarousel photos={showcase.photos} alt={showcase.name} />
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs text-emerald-600">
-                        Add this location to your shortlist to unlock photo previews.
+                  return (
+                    <div
+                      key={idx}
+                      className="scroll-fade flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm"
+                    >
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                        {attraction.name}
                       </div>
-                    )}
-                    <POIReviews
-                      poi={{
-                        name: showcase.name,
-                        category: "attraction",
-                        description: showcase.description,
-                        reviews: showcase.reviews,
-                        rating: averageRating,
-                        user_ratings_total:
-                          showcase.user_ratings_total ?? (reviewCount > 0 ? reviewCount : undefined),
-                      }}
-                    />
-                  </div>
-                );
-              })}
+                      {attraction.photo_urls && attraction.photo_urls[0] ? (
+                        <img
+                          src={attraction.photo_urls[0]}
+                          alt={attraction.name}
+                          className="mb-4 h-48 w-full rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 text-xs text-emerald-600/80">
+                          Photo preview available
+                        </div>
+                      )}
+                      {averageRating && (
+                        <div className="mb-3 flex items-center justify-between text-sm">
+                          <span className="font-medium text-emerald-700">
+                            {attraction.name} {averageRating ? `• ${averageRating.toFixed(1)}★` : ""}
+                          </span>
+                          {attraction.user_ratings_total !== undefined && (
+                            <span className="text-xs text-emerald-600/80">
+                              {attraction.user_ratings_total.toLocaleString()} reviews
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {attraction.description && (
+                        <p className="mb-3 text-xs text-emerald-800/80 leading-relaxed">{attraction.description}</p>
+                      )}
+                      {attraction.reviews && attraction.reviews.length > 0 && (
+                        <div className="space-y-2">
+                          {attraction.reviews.slice(0, 2).map((review, reviewIdx) => (
+                            <div
+                              key={reviewIdx}
+                              className="rounded-xl border border-emerald-50 bg-emerald-50/50 p-3 text-xs text-emerald-800"
+                            >
+                              <div className="mb-1 flex items-center justify-between font-semibold">
+                                <span>{review.author || "Traveler"}</span>
+                                {typeof review.rating === "number" && (
+                                  <span className="text-emerald-600">{review.rating.toFixed(1)}★</span>
+                                )}
+                              </div>
+                              {review.text && <p className="mt-1 leading-relaxed">{review.text}</p>}
+                              {review.relative_time_description && (
+                                <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-emerald-500">
+                                  {review.relative_time_description}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                  More options coming soon
+                </div>
+              )}
             </div>
           </div>
         </section>
+
       </main>
 
-      {/* Chat Planner Sidebar */}
+      {/* Chat Sidebar */}
       {showChat && (
         <div className="fixed right-0 top-0 z-50 h-full w-96 border-l border-emerald-200 bg-white shadow-2xl transition-transform">
-          <div className="h-full">
-            <ChatPlanner
-              itinerary={itinerary}
-              onItineraryUpdate={handleItineraryUpdate}
-              onClose={() => setShowChat(false)}
-              tripId={saved ? savedTripId : undefined}
-            />
-          </div>
+          <ChatPlanner
+            itinerary={itinerary}
+            onItineraryUpdate={handleItineraryUpdate}
+            onClose={() => setShowChat(false)}
+            tripId={saved ? savedTripId : undefined}
+          />
         </div>
       )}
 
@@ -964,7 +1134,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
         {showChat ? "✕" : "💬"}
       </button>
 
-      {/* Save Trip Modal */}
+      {/* Save Modal */}
       {showSaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
@@ -974,16 +1144,12 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
             >
               ✕
             </button>
-            
             <h2 className="mb-4 text-2xl font-bold text-emerald-900">
               {user ? "Save Trip" : "Sign In to Save Trip"}
             </h2>
-
             {!user ? (
               <div className="space-y-4">
-                <p className="text-sm text-emerald-700">
-                  Please sign in to save your trips and access them from your dashboard.
-                </p>
+                <p className="text-sm text-emerald-700">Please sign in to save your trips.</p>
                 <button
                   onClick={() => {
                     setShowSaveModal(false);
@@ -997,9 +1163,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-emerald-900">
-                    Trip Name
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-emerald-900">Trip Name</label>
                   <input
                     type="text"
                     value={tripName}
@@ -1031,4 +1195,3 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
     </div>
   );
 }
-

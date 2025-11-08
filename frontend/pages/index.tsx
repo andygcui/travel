@@ -259,6 +259,13 @@ export default function Home() {
       const data = await response.json();
       // Store in sessionStorage and navigate to results
       sessionStorage.setItem("itinerary", JSON.stringify(data));
+      // Also store the request data to preserve preferences
+      sessionStorage.setItem("tripRequest", JSON.stringify({
+        preferences,
+        likes,
+        dislikes,
+        dietary_restrictions: dietaryRestrictions,
+      }));
       router.push("/results");
     } catch (err: any) {
       setError(err.message || "Unable to reach GreenTrip backend. Make sure it is running.");
