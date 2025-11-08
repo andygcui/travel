@@ -1,8 +1,7 @@
 "use client";
 
-import { GoogleMap, LoadScript, Marker, InfoWindow, Polyline } from "@react-google-maps/api";
+import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView } from "@react-google-maps/api";
 import { useEffect, useState, useRef } from "react";
-import { gsap } from "gsap";
 
 interface Place {
   name: string;
@@ -17,14 +16,17 @@ interface ItineraryMapProps {
   attractions: Place[];
 }
 
+// Quiet fern green accent colors
+const ACCENT = "#2d6a4f"; // quiet fern green
+const ACCENT_DARK = "#1b4332"; // darker outline for contrast
+
 export default function ItineraryMap({ destination, attractions }: ItineraryMapProps) {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [activeMarker, setActiveMarker] = useState<Place | null>(null);
   const [details, setDetails] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }[]>([]);
-  const [animatedPath, setAnimatedPath] = useState<{ lat: number; lng: number }[]>([]);
   const [loading, setLoading] = useState(true);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
   const coordinateCache = useRef<Map<string, { lat: number; lng: number }>>(new Map());
 
   // Debug: Log attractions received
@@ -33,47 +35,60 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     console.log("Destination:", destination);
   }, [attractions, destination]);
 
-  // Rotate colors by day
-  const dayColors = [
-    "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-    "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-    "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
-    "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-    "http://maps.google.com/mapfiles/ms/icons/purple-dot.png",
-  ];
-
-  // Resolve coordinates only when missing (NO HARDCODING)
+  // Initialize coordinates immediately from backend data (if available)
   useEffect(() => {
-    const fetchCoords = async () => {
+    // First, extract any existing coordinates from attractions prop
+    const initialCoords: { lat: number; lng: number }[] = [];
+    const needsGeocoding: number[] = [];
+
+    attractions.forEach((a, i) => {
+      if (a.lat && a.lng) {
+        // Use existing coordinates from backend
+        initialCoords.push({ lat: a.lat, lng: a.lng });
+        const cacheKey = `${a.name}-${destination}`;
+        coordinateCache.current.set(cacheKey, { lat: a.lat, lng: a.lng });
+      } else {
+        // Mark for geocoding
+        needsGeocoding.push(i);
+        initialCoords.push(null as any); // Placeholder to maintain order
+      }
+    });
+
+    // Set initial coordinates immediately (even if some are placeholders)
+    setCoordinates(initialCoords);
+
+    // Set map center immediately if we have at least one coordinate
+    if (initialCoords.length > 0 && initialCoords[0] && initialCoords[0].lat && initialCoords[0].lng) {
+      setMapCenter(initialCoords[0]);
+      setLoading(false); // Don't wait if we have coordinates from backend
+    }
+
+    // If we have coordinates, we can render markers immediately
+    // Only geocode the ones that are missing
+    if (needsGeocoding.length === 0) {
+      setLoading(false);
+      return; // All coordinates are available, no need to geocode
+    }
+
+    // Geocode missing coordinates
+    const fetchMissingCoords = async () => {
       if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
         console.error("Google Maps API key not found");
         setLoading(false);
         return;
       }
 
-      const coords: { lat: number; lng: number }[] = [];
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      
-      // Process attractions in order to maintain sequence for polyline
-      const attractionsWithCoords = [...attractions];
+      const updatedCoords = [...initialCoords];
 
-      for (let i = 0; i < attractionsWithCoords.length; i++) {
-        const a = attractionsWithCoords[i];
+      for (const i of needsGeocoding) {
+        const a = attractions[i];
         
         // Check cache first
         const cacheKey = `${a.name}-${destination}`;
         if (coordinateCache.current.has(cacheKey)) {
           const cached = coordinateCache.current.get(cacheKey)!;
-          a.lat = cached.lat;
-          a.lng = cached.lng;
-          coords.push(cached);
-          continue;
-        }
-
-        // Use existing coordinates if available
-        if (a.lat && a.lng) {
-          coords.push({ lat: a.lat, lng: a.lng });
-          coordinateCache.current.set(cacheKey, { lat: a.lat, lng: a.lng });
+          updatedCoords[i] = cached;
           continue;
         }
 
@@ -87,47 +102,57 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           
           if (data.results?.[0]?.geometry?.location) {
             const loc = data.results[0].geometry.location;
-            a.lat = loc.lat;
-            a.lng = loc.lng;
-            coords.push(loc);
+            updatedCoords[i] = loc;
             coordinateCache.current.set(cacheKey, loc);
           } else {
             console.warn(`Could not geocode: ${a.name}`);
-            // Still add a placeholder to maintain order, but skip in polyline
           }
         } catch (error) {
           console.error(`Error geocoding ${a.name}:`, error);
         }
       }
 
-      setCoordinates(coords);
+      setCoordinates(updatedCoords);
 
-      // Set map center and adjust bounds to fit all markers
-      if (coords.length > 0) {
-        // Use first coordinate as center, but we'll let the map auto-fit bounds
-        setMapCenter(coords[0]);
+      // Update map center if we didn't have one before
+      setMapCenter((currentCenter) => {
+        if (currentCenter) return currentCenter; // Don't override if already set
         
-        // If we have multiple coordinates, calculate bounds (will be used in onLoad)
-        // Note: google.maps might not be available yet, so we'll do this in onLoad
-      } else {
-        // Fallback: center by destination geocode
-        try {
-          const geo = await fetch(
-            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${apiKey}`
-          ).then((r) => r.json());
-          
-          if (geo.results?.[0]?.geometry?.location) {
-            setMapCenter(geo.results[0].geometry.location);
-          }
-        } catch (error) {
-          console.error("Error geocoding destination:", error);
+        const firstValid = updatedCoords.find(c => c && c.lat && c.lng);
+        if (firstValid) {
+          return firstValid;
         }
-      }
+        
+        // If no valid coordinate found, we'll geocode destination asynchronously
+        // This will be handled after setLoading
+        return null;
+      });
+
+      // Fallback geocoding for destination if still no center (async, non-blocking)
+      setMapCenter((currentCenter) => {
+        if (currentCenter) return currentCenter;
+        
+        // Async geocoding - fire and forget
+        fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${apiKey}`
+        )
+          .then((r) => r.json())
+          .then((geo) => {
+            if (geo.results?.[0]?.geometry?.location) {
+              setMapCenter(geo.results[0].geometry.location);
+            }
+          })
+          .catch((error) => {
+            console.error("Error geocoding destination:", error);
+          });
+        
+        return null;
+      });
 
       setLoading(false);
     };
 
-    fetchCoords();
+    fetchMissingCoords();
   }, [attractions, destination]);
 
   // Marker click → fetch details
@@ -176,56 +201,16 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     }
   };
 
-  // Animate route drawing with GSAP when coords are ready
+  // Auto-fit bounds to all coordinates
   useEffect(() => {
-    if (coordinates.length < 2 || loading) {
-      // If we have coordinates but animation hasn't started, show full path
-      if (coordinates.length >= 2) {
-        setAnimatedPath(coordinates);
-      }
-      return;
+    if (!mapRef.current || coordinates.length === 0) return;
+
+    if (typeof google !== "undefined" && google.maps) {
+      const bounds = new google.maps.LatLngBounds();
+      coordinates.forEach((c) => bounds.extend(c as any));
+      mapRef.current.fitBounds(bounds, 64); // padding in pixels
     }
-
-    const total = coordinates.length;
-    const state = { p: 0 };
-
-    // Reset animated path
-    setAnimatedPath([]);
-
-    // Small delay to ensure map is rendered
-    const timer = setTimeout(() => {
-      gsap.fromTo(
-        state,
-        { p: 0 },
-        {
-          p: total,
-          duration: 3,
-          ease: "power2.out",
-          onUpdate: () => {
-            const currentLength = Math.floor(state.p);
-            setAnimatedPath(coordinates.slice(0, currentLength));
-          },
-          onComplete: () => {
-            // Ensure full path is shown at the end
-            setAnimatedPath(coordinates);
-          },
-        }
-      );
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [coordinates, loading]);
-
-  const lineOptions = {
-    strokeColor: "#34d399",
-    strokeOpacity: 0.85,
-    strokeWeight: 5,
-    clickable: false,
-    draggable: false,
-    editable: false,
-    visible: true,
-    zIndex: 1,
-  };
+  }, [coordinates]);
 
   if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
     return (
@@ -235,7 +220,8 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     );
   }
 
-  if (loading || !mapCenter) {
+  // Only show loading if we have no coordinates at all and no map center
+  if (loading && coordinates.length === 0 && !mapCenter) {
     return (
       <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl bg-emerald-50 flex items-center justify-center">
         <div className="text-center">
@@ -246,82 +232,98 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     );
   }
 
+  // Use a fallback center if we don't have one yet but have coordinates
+  const displayCenter = mapCenter || (coordinates.length > 0 && coordinates[0] ? coordinates[0] : { lat: 0, lng: 0 });
+
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl">
-      <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
+        <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
         <GoogleMap
           mapContainerStyle={{ width: "100%", height: "100%" }}
-          center={mapCenter}
-          zoom={coordinates.length > 1 ? undefined : 12}
+          center={displayCenter}
+          zoom={12}
           options={{
-            styles: [
-              { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-              { featureType: "road", elementType: "geometry", stylers: [{ color: "#cde6cf" }] },
-              { featureType: "water", stylers: [{ color: "#aee2e0" }] },
-            ],
             mapTypeControl: false,
-            fullscreenControl: true,
+            fullscreenControl: false,
             streetViewControl: false,
-            zoomControl: true,
+            clickableIcons: false,
           }}
           onLoad={(map) => {
-            // Auto-fit bounds to show all markers with padding
+            mapRef.current = map;
+            // Auto-fit bounds when map loads if we have coordinates
             if (coordinates.length > 0 && typeof google !== "undefined" && google.maps) {
               const bounds = new google.maps.LatLngBounds();
-              coordinates.forEach(coord => bounds.extend(coord));
-              
-              if (coordinates.length === 1) {
-                // Single marker: center on it with reasonable zoom
-                map.setCenter(coordinates[0]);
-                map.setZoom(14);
-              } else {
-                // Multiple markers: fit bounds with padding
-                map.fitBounds(bounds, {
-                  top: 50,
-                  right: 50,
-                  bottom: 50,
-                  left: 50,
-                });
-                
-                // Limit max zoom to prevent over-zooming
-                const listener = google.maps.event.addListener(map, "bounds_changed", () => {
-                  const currentZoom = map.getZoom();
-                  if (currentZoom && currentZoom > 15) {
-                    map.setZoom(15);
-                  }
-                  google.maps.event.removeListener(listener);
-                });
-              }
+              coordinates.forEach((c) => bounds.extend(c as any));
+              map.fitBounds(bounds, 64);
             }
           }}
         >
-          {/* Polyline connecting all markers in order */}
-          {animatedPath.length > 1 && (
-            <Polyline
-              path={animatedPath}
-              options={lineOptions}
-              onLoad={(polyline) => {
-                polylineRef.current = polyline;
-              }}
-            />
-          )}
+          {/* Markers with pushpin style (quiet fern green) */}
+          {attractions.map((a, i) => {
+            // Priority: Use coordinates from state, fallback to attraction's lat/lng, then check if still geocoding
+            const coord = coordinates[i] || (a.lat && a.lng ? { lat: a.lat, lng: a.lng } : null);
+            
+            // Don't render if no coordinate and google maps not ready
+            if (!coord || !coord.lat || !coord.lng || (typeof google === "undefined" || !google.maps)) return null;
+            
+            return (
+              <Marker
+                key={`${a.name}-${a.day}-${i}`}
+                position={{ lat: coord.lat, lng: coord.lng }}
+                onClick={() => handleMarkerClick(a)}
+                icon={{
+                  // Pushpin SVG path - teardrop shape (like 📍 emoji)
+                  // Proper pushpin with rounded top and point at bottom
+                  path: "M12 0C5.373 0 0 5.373 0 12c0 8.837 12 20 12 20s12-11.163 12-20C24 5.373 18.627 0 12 0zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z",
+                  fillColor: ACCENT,
+                  fillOpacity: 1,
+                  strokeColor: ACCENT_DARK,
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  scale: 0.75,
+                  anchor: new google.maps.Point(12, 24), // Anchor at bottom point of pushpin
+                }}
+                title={a.name}
+              />
+            );
+          })}
 
-          {/* Markers with labels and day-based colors */}
-          {attractions.map(
-            (a, i) =>
-              a.lat && a.lng ? (
-                <Marker
-                  key={`${a.name}-${a.day}-${i}`}
-                  position={{ lat: a.lat, lng: a.lng }}
-                  onClick={() => handleMarkerClick(a)}
-                  icon={{
-                    url: dayColors[(a.day - 1) % dayColors.length],
+          {/* Custom labels with background rectangles above pushpins */}
+          {attractions.map((a, i) => {
+            // Priority: Use coordinates from state, fallback to attraction's lat/lng
+            const coord = coordinates[i] || (a.lat && a.lng ? { lat: a.lat, lng: a.lng } : null);
+            
+            // Don't render if no coordinate and google maps not ready
+            if (!coord || !coord.lat || !coord.lng || (typeof google === "undefined" || !google.maps)) return null;
+            
+            return (
+              <OverlayView
+                key={`label-${a.name}-${a.day}-${i}`}
+                position={{ lat: coord.lat, lng: coord.lng }}
+                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+              >
+                <div
+                  style={{
+                    transform: "translate(-50%, calc(-100% - 20px))",
+                    backgroundColor: ACCENT, // Fern green (#2d6a4f)
+                    color: "#ffffff",
+                    fontSize: "10px",
+                    fontWeight: "600",
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
+                    whiteSpace: "nowrap",
+                    border: `1px solid ${ACCENT_DARK}`,
+                    pointerEvents: "none",
+                    display: "inline-block", // Makes rectangle wrap to text width
+                    lineHeight: "1.2",
                   }}
-                  label={a.name.length > 20 ? a.name.substring(0, 17) + "..." : a.name}
-                  title={a.name}
-                />
-              ) : null
-          )}
+                >
+                  {a.name.length > 20 ? a.name.substring(0, 17) + "..." : a.name}
+                </div>
+              </OverlayView>
+            );
+          })}
 
           {/* Info Window for selected marker */}
           {activeMarker && activeMarker.lat && activeMarker.lng && (
@@ -333,7 +335,21 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
               }}
             >
               <div className="max-w-xs text-sm text-gray-800 p-2">
-                <h3 className="font-semibold text-lg mb-2 text-emerald-900">{details?.name || activeMarker.name}</h3>
+                {/* Tag-like label header */}
+                <div
+                  style={{
+                    backgroundColor: "rgba(30,30,30,0.85)",
+                    color: "#fff",
+                    fontSize: "12px",
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    marginBottom: "8px",
+                    display: "inline-block",
+                  }}
+                >
+                  {details?.name || activeMarker.name}
+                </div>
                 {details?.photos?.[0]?.photo_reference && (
                   <img
                     src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=300&photo_reference=${details.photos[0].photo_reference}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
