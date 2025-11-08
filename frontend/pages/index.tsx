@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 interface ItineraryDay {
@@ -6,6 +6,18 @@ interface ItineraryDay {
   morning: string;
   afternoon: string;
   evening: string;
+}
+
+interface FlightSummary {
+  id?: string;
+  carrier: string;
+  origin: string;
+  destination: string;
+  departure: string;
+  arrival: string;
+  price: number;
+  currency?: string;
+  eco_score?: number;
 }
 
 interface ItineraryResponse {
@@ -20,12 +32,17 @@ interface ItineraryResponse {
   };
   rationale: string;
   eco_score?: number;
+  start_date?: string;
+  end_date?: string;
+  flights?: FlightSummary[];
 }
 
 export default function Home() {
   const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [numDays, setNumDays] = useState(5);
   const [budget, setBudget] = useState(2000);
   const [preferences, setPreferences] = useState<string[]>([]);
@@ -41,18 +58,42 @@ export default function Home() {
     );
   };
 
+  useEffect(() => {
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
+        const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        setNumDays(Math.max(1, diff));
+      }
+    }
+  }, [startDate, endDate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+          throw new Error("Please provide valid travel dates.");
+        }
+        if (end < start) {
+          throw new Error("End date must be after start date.");
+        }
+      }
+
       const response = await fetch("http://localhost:8000/generate_itinerary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination,
           origin: origin || undefined,
+          start_date: startDate || undefined,
+          end_date: endDate || undefined,
           num_days: numDays,
           budget,
           preferences,
@@ -192,6 +233,36 @@ export default function Home() {
                     placeholder="e.g. Kyoto, Japan"
                     className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                     required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-emerald-900">
+                    Start date
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  />
+                  <p className="mt-1 text-xs text-emerald-500">
+                    Exact dates unlock smarter flight and stay matching.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-emerald-900">
+                    End date
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full rounded-xl border border-emerald-100 bg-white px-4 py-3 text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                   />
                 </div>
               </div>

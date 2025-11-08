@@ -40,7 +40,9 @@ class ItineraryGenerationRequest(BaseModel):
     """GreenTrip-specific request for /generate_itinerary endpoint"""
     destination: str
     origin: Optional[str] = Field(default=None, description="Origin city or airport code (e.g. 'New York' or 'JFK')")
-    num_days: int = Field(gt=0, le=30, description="Number of days for the trip")
+    start_date: Optional[date] = Field(default=None, description="Trip start date (YYYY-MM-DD)")
+    end_date: Optional[date] = Field(default=None, description="Trip end date (YYYY-MM-DD)")
+    num_days: Optional[int] = Field(default=None, gt=0, le=45, description="Number of days for the trip")
     budget: float = Field(gt=0, description="Total budget in USD")
     preferences: List[str] = Field(default_factory=list, description="e.g. food, art, outdoors")
     mode: str = Field(default="balanced", description="price-optimal or balanced")
@@ -72,6 +74,19 @@ class FlightOption(BaseModel):
     booking_url: Optional[str] = None
     segments: List[FlightSegment]
     refundable_until: Optional[datetime] = None
+    emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions in kg")
+
+
+class GreenTripFlightOption(BaseModel):
+    id: str
+    carrier: str
+    origin: str
+    destination: str
+    departure: datetime
+    arrival: datetime
+    price: float
+    currency: str = "USD"
+    eco_score: Optional[float] = Field(default=None, description="0-100 eco score (higher is better)")
     emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions in kg")
 
 
@@ -196,6 +211,8 @@ class BookingConfirmation(BaseModel):
 class GreenTripItineraryResponse(BaseModel):
     """GreenTrip response from /generate_itinerary"""
     destination: str
+    start_date: date
+    end_date: date
     num_days: int
     budget: float
     mode: str
@@ -203,4 +220,5 @@ class GreenTripItineraryResponse(BaseModel):
     totals: dict = Field(description="Contains cost and emissions_kg")
     rationale: str
     eco_score: Optional[float] = Field(default=None, description="0-100 sustainability score")
+    flights: List[GreenTripFlightOption] = Field(default_factory=list, description="Flight summaries for display")
 

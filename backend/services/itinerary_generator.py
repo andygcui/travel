@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
-from typing import List
+from typing import List, Optional, Tuple
 
 from schemas import (
     DedalusItineraryDay,
     FlightOption,
+    GreenTripFlightOption,
     GreenTripItineraryResponse,
     ItineraryGenerationRequest,
     LodgingOption,
@@ -39,6 +40,16 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     4. Build prompt and call Dedalus
     5. Return formatted response
     """
+    # Normalise dates and duration
+    start_date, end_date, trip_days = _resolve_trip_dates(request)
+    normalized_request = request.copy(
+        update={
+            "start_date": start_date,
+            "end_date": end_date,
+            "num_days": trip_days,
+        }
+    )
+
     # Step 1: Geocode destination
     logger.info(f"Geocoding destination: {request.destination}")
     latitude, longitude = await google_places_service.geocode_destination(request.destination)
@@ -65,11 +76,6 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
             logger.warning(f"Unknown destination '{request.destination}', defaulting to Paris coordinates")
     
     logger.info(f"Geocoded to: {latitude}, {longitude}")
-    
-    # Step 2: Calculate dates (using num_days)
-    today = date.today()
-    start_date = today + timedelta(days=30)  # Default: 30 days from now
-    end_date = start_date + timedelta(days=request.num_days - 1)
     
     # Step 3: Fetch data in parallel
     # Resolve origin to airport code
@@ -147,20 +153,20 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     for hotel in hotels:
         if not hotel.emissions_kg:
             emissions = await climatiq_service.estimate_hotel_emissions(
-                nights=request.num_days,
+                nights=trip_days,
             )
             if emissions:
-                hotel.emissions_kg = emissions / request.num_days  # Per night
+                hotel.emissions_kg = emissions / trip_days  # Per night
             else:
                 hotel.emissions_kg = climatiq_service.estimate_hotel_emissions_fallback(
-                    request.num_days
-                ) / request.num_days
+                    trip_days
+                ) / trip_days
     
     # Step 5: Build prompt and call Dedalus
     logger.info("Building Dedalus prompt...")
     prompt = prompt_builder.build_dedalus_prompt(
         destination=request.destination,
-        num_days=request.num_days,
+        num_days=trip_days,
         budget=request.budget,
         preferences=request.preferences,
         mode=request.mode,
@@ -180,7 +186,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         logger.error(f"Dedalus API error: {str(e)}")
         logger.warning("Falling back to basic itinerary")
         # Fallback: return a basic itinerary
-        return _fallback_itinerary(request, flights, hotels)
+        return _fallback_itinerary(normalized_request, flights, hotels, start_date, end_date)
     
     # Step 6: Parse and format response
     days = dedalus_response.get("days", [])
@@ -202,6 +208,8 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     # Calculate eco score (0-100)
     total_emissions = totals.get("emissions_kg", 0)
     eco_score = max(0, 100 - (total_emissions / 10))  # Simple scoring: lower emissions = higher score
+
+    flight_summaries = _summarize_flights(flights)
     
     logger.info(f"✅ Itinerary generation complete!")
     logger.info(f"   - {len(itinerary_days)} days generated")
@@ -211,13 +219,16 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     
     return GreenTripItineraryResponse(
         destination=request.destination,
-        num_days=request.num_days,
+        start_date=start_date,
+        end_date=end_date,
+        num_days=trip_days,
         budget=request.budget,
         mode=request.mode,
         days=itinerary_days,
         totals=totals,
         rationale=rationale,
         eco_score=eco_score,
+        flights=flight_summaries,
     )
 
 
@@ -225,10 +236,12 @@ def _fallback_itinerary(
     request: ItineraryGenerationRequest,
     flights: List[FlightOption],
     hotels: List[LodgingOption],
+    start_date: date,
+    end_date: date,
 ) -> GreenTripItineraryResponse:
     """Fallback itinerary when Dedalus is unavailable"""
     days = []
-    for i in range(1, request.num_days + 1):
+    for i in range(1, (request.num_days or 1) + 1):
         days.append(
             DedalusItineraryDay(
                 day=i,
@@ -238,21 +251,72 @@ def _fallback_itinerary(
             )
         )
     
+    nights = request.num_days or 1
     total_cost = (flights[0].price if flights else 0) + (
-        (hotels[0].nightly_rate * request.num_days) if hotels else 0
+        (hotels[0].nightly_rate * nights) if hotels else 0
     )
     total_emissions = (flights[0].emissions_kg if flights and flights[0].emissions_kg else 200) + (
-        (hotels[0].emissions_kg * request.num_days) if hotels and hotels[0].emissions_kg else 15 * request.num_days
+        (hotels[0].emissions_kg * nights) if hotels and hotels[0].emissions_kg else 15 * nights
     )
     
     return GreenTripItineraryResponse(
         destination=request.destination,
-        num_days=request.num_days,
+        start_date=start_date,
+        end_date=end_date,
+        num_days=request.num_days or nights,
         budget=request.budget,
         mode=request.mode,
         days=days,
         totals={"cost": total_cost, "emissions_kg": total_emissions},
         rationale="Fallback itinerary generated due to API unavailability.",
         eco_score=max(0, 100 - (total_emissions / 10)),
+        flights=_summarize_flights(flights),
     )
+
+
+def _resolve_trip_dates(request: ItineraryGenerationRequest) -> Tuple[date, date, int]:
+    today = date.today()
+    start = request.start_date or (today + timedelta(days=30))
+    if request.end_date:
+        end = request.end_date
+    else:
+        fallback_days = request.num_days or 5
+        end = start + timedelta(days=fallback_days - 1)
+
+    if end < start:
+        end = start
+
+    trip_days = max(1, (end - start).days + 1)
+    return start, end, trip_days
+
+
+def _compute_flight_eco_score(emissions_kg: Optional[float]) -> Optional[float]:
+    if emissions_kg is None:
+        return None
+    return max(0.0, min(100.0, 100.0 - emissions_kg))
+
+
+def _summarize_flights(flights: List[FlightOption]) -> List[GreenTripFlightOption]:
+    summaries: List[GreenTripFlightOption] = []
+    for option in flights:
+        if not option.segments:
+            continue
+        first_segment = option.segments[0]
+        last_segment = option.segments[-1]
+        carrier = first_segment.carrier or "Carrier"
+        summaries.append(
+            GreenTripFlightOption(
+                id=option.id,
+                carrier=carrier,
+                origin=first_segment.origin,
+                destination=last_segment.destination,
+                departure=first_segment.departure,
+                arrival=last_segment.arrival,
+                price=option.price,
+                currency=option.currency,
+                eco_score=_compute_flight_eco_score(option.emissions_kg),
+                emissions_kg=option.emissions_kg,
+            )
+        )
+    return summaries
 
