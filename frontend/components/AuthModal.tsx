@@ -32,6 +32,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
   const [selectedDietary, setSelectedDietary] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [newUserId, setNewUserId] = useState<string | null>(null)
+  const [newUserSession, setNewUserSession] = useState<any>(null)
 
   if (!isOpen) return null
 
@@ -56,6 +58,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         
         // If sign up successful, move to preferences step
         if (data.user) {
+          setNewUserId(data.user.id)
+          // Store session if available (email confirmation might be disabled)
+          if (data.session) {
+            setNewUserSession(data.session)
+          }
           setStep('preferences')
         } else {
           // Email confirmation required
@@ -80,7 +87,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
 
   const savePreferences = async (userId: string) => {
     try {
-      await supabase
+      const { error } = await supabase
         .from('user_preferences')
         .upsert({
           user_id: userId,
@@ -92,31 +99,117 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         }, {
           onConflict: 'user_id'
         })
+      
+      if (error) {
+        console.error('Error saving preferences:', error)
+        // If RLS blocks it, we'll save it later when user logs in
+        return false
+      }
+      return true
     } catch (err: any) {
       console.error('Error saving preferences:', err)
+      return false
     }
   }
 
   const handleSkipPreferences = async () => {
-    // Get current user and save empty preferences
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      await savePreferences(session.user.id)
+    console.log('handleSkipPreferences called')
+    setLoading(true)
+    setError('')
+    try {
+      // Check session from signup response first, then try getSession
+      let session = newUserSession
+      console.log('Initial session from signup:', session)
+      
+      if (!session) {
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
+        session = currentSession
+        console.log('Session from getSession:', session, 'Error:', sessionError)
+      }
+      
+      const userId = session?.user?.id || newUserId
+      console.log('User ID:', userId)
+      
+      if (userId) {
+        // Try to save empty preferences (might fail if no session due to RLS)
+        const saved = await savePreferences(userId)
+        console.log('Preferences saved:', saved)
+        if (!saved && !session?.user) {
+          // Can't save yet due to RLS, but that's OK - will save on login
+          console.log('Preferences will be saved when user confirms email and signs in')
+        }
+      }
+      
+      // Check if user is actually logged in
+      if (session?.user) {
+        console.log('User is logged in, calling onAuthSuccess')
+        // User is logged in, preferences saved
+        onAuthSuccess()
+        onClose()
+      } else {
+        console.log('No session, user needs to confirm email')
+        // User needs to confirm email - show message and close
+        alert('Account created! Please check your email to confirm your account, then sign in.')
+        onClose()
+        resetForm()
+      }
+    } catch (err: any) {
+      console.error('Error in handleSkipPreferences:', err)
+      setError(err.message || 'Failed to complete registration')
+    } finally {
+      setLoading(false)
     }
-    onAuthSuccess()
-    onClose()
   }
 
   const handleCompleteSignUp = async () => {
+    console.log('handleCompleteSignUp called')
     setLoading(true)
+    setError('')
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        await savePreferences(session.user.id)
+      // Check session from signup response first, then try getSession
+      let session = newUserSession
+      console.log('Initial session from signup:', session)
+      
+      if (!session) {
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
+        session = currentSession
+        console.log('Session from getSession:', session, 'Error:', sessionError)
       }
-      onAuthSuccess()
-      onClose()
+      
+      const userId = session?.user?.id || newUserId
+      console.log('User ID:', userId, 'Selected preferences:', { selectedPreferences, selectedLikes, selectedDislikes, selectedDietary })
+      
+      if (userId) {
+        // Try to save preferences (might fail if no session due to RLS)
+        const saved = await savePreferences(userId)
+        console.log('Preferences saved:', saved)
+        if (!saved && !session?.user) {
+          // Can't save yet due to RLS - store in sessionStorage to save on login
+          sessionStorage.setItem('pending_preferences', JSON.stringify({
+            preferences: selectedPreferences,
+            likes: selectedLikes,
+            dislikes: selectedDislikes,
+            dietary: selectedDietary,
+          }))
+          console.log('Preferences stored temporarily, will be saved when user confirms email and signs in')
+        }
+      }
+      
+      // Check if user is actually logged in
+      if (session?.user) {
+        console.log('User is logged in, calling onAuthSuccess')
+        // User is logged in, preferences saved
+        onAuthSuccess()
+        onClose()
+      } else {
+        console.log('No session, user needs to confirm email')
+        // User needs to confirm email - show message and close
+        alert('Account created! Please check your email to confirm your account. After confirming, sign in and your preferences will be saved.')
+        onClose()
+        resetForm()
+      }
     } catch (err: any) {
+      console.error('Error in handleCompleteSignUp:', err)
       setError(err.message || 'Failed to save preferences')
     } finally {
       setLoading(false)
@@ -153,6 +246,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
     setSelectedDietary([])
     setStep('credentials')
     setError('')
+    setNewUserId(null)
+    setNewUserSession(null)
   }
 
   if (!isOpen) return null

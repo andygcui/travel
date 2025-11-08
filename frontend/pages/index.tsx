@@ -165,6 +165,32 @@ export default function Home() {
     if (session?.user) {
       setUser(session.user);
       await loadUserPreferences(session.user.id);
+      
+      // Try to save any pending preferences that might not have been saved during signup
+      // This handles the case where preferences were selected but couldn't be saved due to RLS
+      const pendingPrefs = sessionStorage.getItem('pending_preferences');
+      if (pendingPrefs) {
+        try {
+          const prefs = JSON.parse(pendingPrefs);
+          await supabase
+            .from('user_preferences')
+            .upsert({
+              user_id: session.user.id,
+              preferences: prefs.preferences || [],
+              likes: prefs.likes || [],
+              dislikes: prefs.dislikes || [],
+              dietary_restrictions: prefs.dietary || [],
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'user_id'
+            });
+          sessionStorage.removeItem('pending_preferences');
+          // Reload preferences to show the newly saved ones
+          await loadUserPreferences(session.user.id);
+        } catch (err) {
+          console.error('Error saving pending preferences:', err);
+        }
+      }
     }
   };
 
