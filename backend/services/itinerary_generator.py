@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, timedelta
 from typing import List, Optional, Tuple
 
 from schemas import (
+    DayWeather,
+    DaypartWeather,
     DedalusItineraryDay,
     FlightOption,
     GreenTripFlightOption,
@@ -55,13 +58,12 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     latitude, longitude = await google_places_service.geocode_destination(request.destination)
     
     if not latitude or not longitude:
-        # Fallback: use common city coordinates as defaults
-        logger.warning(f"Could not geocode {request.destination}, using fallback coordinates")
-        # Common city fallbacks
+        logger.warning(f"Could not geocode {request.destination}, attempting fallback coordinates")
         fallback_coords = {
             "paris": (48.8566, 2.3522),
             "paris, france": (48.8566, 2.3522),
             "new york": (40.7128, -74.0060),
+            "new york, usa": (40.7128, -74.0060),
             "london": (51.5074, -0.1278),
             "tokyo": (35.6762, 139.6503),
             "rome": (41.9028, 12.4964),
@@ -71,9 +73,13 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
             latitude, longitude = fallback_coords[dest_lower]
             logger.info(f"Using fallback coordinates for {request.destination}: ({latitude}, {longitude})")
         else:
-            # Default to Paris if unknown
+            if GOOGLE_PLACES_KEY := os.getenv("GOOGLE_PLACES_KEY"):
+                logger.warning(f"Unknown destination '{request.destination}', defaulting to Paris coordinates")
+            else:
+                logger.warning(
+                    "GOOGLE_PLACES_KEY is not set; please add it to backend/.env to enable accurate geocoding."
+                )
             latitude, longitude = 48.8566, 2.3522
-            logger.warning(f"Unknown destination '{request.destination}', defaulting to Paris coordinates")
     
     logger.info(f"Geocoded to: {latitude}, {longitude}")
     
@@ -115,13 +121,13 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     
     # Fetch weather
     logger.info(f"Fetching weather forecast")
-    weather = await openweather_service.fetch_weather_openweather(
+    weather_daily, daypart_weather = await openweather_service.fetch_weather_openweather(
         latitude=latitude,
         longitude=longitude,
         start=start_date,
         end=end_date,
     )
-    logger.info(f"Got {len(weather)} days of weather data")
+    logger.info(f"Got {len(weather_daily)} days of weather data")
     
     # Fetch attractions
     logger.info(f"Fetching attractions for preferences: {request.preferences}")
@@ -173,7 +179,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         flights=flights,
         hotels=hotels,
         attractions=attractions,
-        weather=weather,
+        weather=weather_daily,
     )
     
     # Call Dedalus
@@ -186,7 +192,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         logger.error(f"Dedalus API error: {str(e)}")
         logger.warning("Falling back to basic itinerary")
         # Fallback: return a basic itinerary
-        return _fallback_itinerary(normalized_request, flights, hotels, start_date, end_date)
+        return _fallback_itinerary(normalized_request, flights, hotels, start_date, end_date, weather_daily, daypart_weather)
     
     # Step 6: Parse and format response
     days = dedalus_response.get("days", [])
@@ -229,6 +235,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         rationale=rationale,
         eco_score=eco_score,
         flights=flight_summaries,
+        day_weather=daypart_weather,
     )
 
 
@@ -238,6 +245,8 @@ def _fallback_itinerary(
     hotels: List[LodgingOption],
     start_date: date,
     end_date: date,
+    weather_daily: List[WeatherForecast],
+    daypart_weather: List[DayWeather],
 ) -> GreenTripItineraryResponse:
     """Fallback itinerary when Dedalus is unavailable"""
     days = []
@@ -271,6 +280,7 @@ def _fallback_itinerary(
         rationale="Fallback itinerary generated due to API unavailability.",
         eco_score=max(0, 100 - (total_emissions / 10)),
         flights=_summarize_flights(flights),
+        day_weather=daypart_weather or _fallback_daypart_weather_list(start_date, end_date),
     )
 
 
@@ -319,4 +329,25 @@ def _summarize_flights(flights: List[FlightOption]) -> List[GreenTripFlightOptio
             )
         )
     return summaries
+
+
+def _fallback_daypart_weather_list(start: date, end: date) -> List[DayWeather]:
+    current = start
+    results: List[DayWeather] = []
+    while current <= end:
+        fallback_slice = DaypartWeather(
+            summary="Mild conditions",
+            temperature_c=20,
+            precipitation_probability=0.2,
+        )
+        results.append(
+            DayWeather(
+                date=current,
+                morning=fallback_slice,
+                afternoon=fallback_slice,
+                evening=fallback_slice,
+            )
+        )
+        current += timedelta(days=1)
+    return results
 

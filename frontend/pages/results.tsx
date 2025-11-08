@@ -40,6 +40,19 @@ interface FlightOption {
   emissions_kg?: number;
 }
 
+interface DaypartWeather {
+  summary: string;
+  temperature_c: number;
+  precipitation_probability: number;
+}
+
+interface DayWeather {
+  date: string;
+  morning: DaypartWeather;
+  afternoon: DaypartWeather;
+  evening: DaypartWeather;
+}
+
 interface ItineraryResponse {
   destination: string;
   start_date?: string;
@@ -55,17 +68,21 @@ interface ItineraryResponse {
   rationale: string;
   eco_score?: number;
   flights?: FlightOption[];
+  day_weather?: DayWeather[];
 }
 
 export default function Results() {
   const router = useRouter();
   const [itinerary, setItinerary] = useState<ItineraryResponse | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [currentDayIndex, setCurrentDayIndex] = useState(0);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
     if (stored) {
-      setItinerary(JSON.parse(stored));
+      const parsed: ItineraryResponse = JSON.parse(stored);
+      setItinerary(parsed);
+      setCurrentDayIndex(0);
     } else {
       router.push("/");
     }
@@ -107,6 +124,11 @@ export default function Results() {
     return <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-900">Loading your journey...</div>;
   }
 
+  const currentDay = itinerary.days[currentDayIndex];
+  const currentWeather = itinerary.day_weather?.[currentDayIndex];
+  const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
+  const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
+
   const currency = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -128,6 +150,26 @@ const formatDateTime = (value?: string) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 };
+
+const weatherGlyph = (summary: string) => {
+  const text = summary.toLowerCase();
+  if (text.includes("thunder")) return "⛈️";
+  if (text.includes("snow")) return "❄️";
+  if (text.includes("rain") || text.includes("drizzle")) return "🌧️";
+  if (text.includes("cloud")) return "☁️";
+  if (text.includes("storm")) return "🌩️";
+  if (text.includes("wind")) return "💨";
+  if (text.includes("fog") || text.includes("mist")) return "🌫️";
+  return "☀️";
+};
+
+const buildWeatherTooltip = (weather?: DaypartWeather) => {
+  if (!weather) return "";
+  return `${weather.summary} • ${Math.round(weather.temperature_c)}°C • ${Math.round(
+    weather.precipitation_probability * 100
+  )}% chance of precipitation`;
+};
+
 
   const comparisonData = {
     labels: ["Cost (x100)", "Emissions (kg CO₂)", "Eco Score"],
@@ -295,31 +337,91 @@ const formatDateTime = (value?: string) => {
           <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600 mb-6">
             Your day-by-day immersion
           </h3>
-          <div className="space-y-6">
-            {itinerary.days.map((day) => (
-              <div
-                key={day.day}
-                className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-sm shadow-emerald-200/30"
+          <div className="mb-6 rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-md shadow-emerald-200/40">
+            <h4 className="text-xs uppercase tracking-[0.3em] text-emerald-500 mb-3">
+              Map preview
+            </h4>
+            <div className="flex h-72 w-full items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50/80 text-sm text-emerald-600">
+              <div className="text-center">
+                <p className="font-medium text-emerald-700">Interactive map placeholder</p>
+                <p className="mt-2 text-xs text-emerald-500">
+                  A Mapbox embed will showcase flight paths and key points of interest here.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Day selector</p>
+              <h4 className="mt-1 text-lg font-medium text-emerald-900">
+                Day {currentDay.day} of {itinerary.days.length}
+              </h4>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={goPrevDay}
+                disabled={currentDayIndex === 0}
+                className="rounded-full border border-emerald-200 px-3 py-2 text-sm text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous day"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="text-lg font-medium text-emerald-900">Day {day.day}</h4>
+                ‹
+              </button>
+              <button
+                onClick={goNextDay}
+                disabled={currentDayIndex === itinerary.days.length - 1}
+                className="rounded-full border border-emerald-200 px-3 py-2 text-sm text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next day"
+              >
+                ›
+              </button>
+            </div>
+          </div>
+          <div className="mt-6 space-y-4">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-sm shadow-emerald-200/30">
+              <div className="grid gap-6 md:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Morning</p>
+                  <p className="mt-2 text-sm text-emerald-800">{currentDay.morning}</p>
+                  {currentWeather?.morning && (
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                      <span className="text-lg">{weatherGlyph(currentWeather.morning.summary)}</span>
+                      <span>{Math.round(currentWeather.morning.temperature_c)}°C</span>
+                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
+                        {buildWeatherTooltip(currentWeather.morning)}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="mt-4 grid gap-6 md:grid-cols-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Morning</p>
-                    <p className="mt-2 text-sm text-emerald-800">{day.morning}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
-                    <p className="mt-2 text-sm text-emerald-800">{day.afternoon}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
-                    <p className="mt-2 text-sm text-emerald-800">{day.evening}</p>
-                  </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
+                  <p className="mt-2 text-sm text-emerald-800">{currentDay.afternoon}</p>
+                  {currentWeather?.afternoon && (
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                      <span className="text-lg">
+                        {weatherGlyph(currentWeather.afternoon.summary)}
+                      </span>
+                      <span>{Math.round(currentWeather.afternoon.temperature_c)}°C</span>
+                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
+                        {buildWeatherTooltip(currentWeather.afternoon)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
+                  <p className="mt-2 text-sm text-emerald-800">{currentDay.evening}</p>
+                  {currentWeather?.evening && (
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                      <span className="text-lg">{weatherGlyph(currentWeather.evening.summary)}</span>
+                      <span>{Math.round(currentWeather.evening.temperature_c)}°C</span>
+                      <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
+                        {buildWeatherTooltip(currentWeather.evening)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </section>
       </main>

@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import os
 from datetime import date, timedelta
-from typing import List, Optional
+from collections import Counter
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 from dotenv import load_dotenv
 
-from schemas import WeatherForecast
+from schemas import DayWeather, DaypartWeather, WeatherForecast
 
 load_dotenv()
 
@@ -21,13 +22,13 @@ async def fetch_weather_openweather(
     longitude: float,
     start: date,
     end: date,
-) -> List[WeatherForecast]:
+) -> Tuple[List[WeatherForecast], List[DayWeather]]:
     """
     Fetch weather forecast from OpenWeather API.
     Returns daily forecasts for the trip duration.
     """
     if not OPENWEATHER_KEY:
-        return _fallback_weather(start, end)
+        return _fallback_weather(start, end), _fallback_daypart_weather(start, end)
     
     # OpenWeather 5-day forecast endpoint
     params = {
@@ -47,10 +48,12 @@ async def fetch_weather_openweather(
             data = response.json()
             
             forecasts: List[WeatherForecast] = []
+            daypart_results: List[DayWeather] = []
             forecast_list = data.get("list", [])
             
-            # Group by date and get daily min/max
-            daily_data: dict = {}
+            # Group by date and get daily min/max and dayparts
+            daily_data: Dict[date, Dict[str, List]] = {}
+            daypart_entries: Dict[date, Dict[str, List[dict]]] = {}
             for item in forecast_list:
                 dt = item.get("dt")
                 if not dt:
@@ -60,16 +63,18 @@ async def fetch_weather_openweather(
                 if forecast_date < start or forecast_date > end:
                     continue
                 
-                if forecast_date not in daily_data:
-                    daily_data[forecast_date] = {
-                        "highs": [],
-                        "lows": [],
-                        "precip": [],
-                        "conditions": [],
-                    }
-                
+                daily_data.setdefault(
+                    forecast_date,
+                    {"highs": [], "lows": [], "precip": [], "conditions": []},
+                )
+                daypart_entries.setdefault(
+                    forecast_date,
+                    {"morning": [], "afternoon": [], "evening": []},
+                )
+
                 main = item.get("main", {})
                 weather = item.get("weather", [{}])[0]
+                pop = item.get("pop", 0.0) or 0.0
                 
                 daily_data[forecast_date]["highs"].append(main.get("temp_max", 0))
                 daily_data[forecast_date]["lows"].append(main.get("temp_min", 0))
@@ -77,6 +82,21 @@ async def fetch_weather_openweather(
                     item.get("rain", {}).get("3h", 0) or item.get("snow", {}).get("3h", 0)
                 )
                 daily_data[forecast_date]["conditions"].append(weather.get("main", "Clear"))
+
+                hour = int(item.get("dt_txt", "00").split(" ")[1].split(":")[0])
+                if 6 <= hour < 12:
+                    label = "morning"
+                elif 12 <= hour < 18:
+                    label = "afternoon"
+                else:
+                    label = "evening"
+                daypart_entries[forecast_date][label].append(
+                    {
+                        "temp": main.get("temp"),
+                        "condition": weather.get("description", weather.get("main", "Clear")),
+                        "pop": pop,
+                    }
+                )
             
             # Create forecasts for each day
             current = start
@@ -98,6 +118,16 @@ async def fetch_weather_openweather(
                             precipitation_probability=min(precip / 10.0, 1.0),
                         )
                     )
+
+                    dayparts = daypart_entries.get(current, {})
+                    daypart_results.append(
+                        DayWeather(
+                            date=current,
+                            morning=_build_daypart(dayparts.get("morning"), summary, (high + low) / 2),
+                            afternoon=_build_daypart(dayparts.get("afternoon"), summary, high - 1),
+                            evening=_build_daypart(dayparts.get("evening"), summary, low),
+                        )
+                    )
                 else:
                     # Fallback for missing dates
                     forecasts.append(
@@ -109,12 +139,26 @@ async def fetch_weather_openweather(
                             precipitation_probability=0.2,
                         )
                     )
+                    daypart_results.append(
+                        DayWeather(
+                            date=current,
+                            morning=_fallback_daypart(),
+                            afternoon=_fallback_daypart(),
+                            evening=_fallback_daypart(),
+                        )
+                    )
                 
                 current += timedelta(days=1)
             
-            return forecasts if forecasts else _fallback_weather(start, end)
+            if not forecasts:
+                return _fallback_weather(start, end), _fallback_daypart_weather(start, end)
+
+            if not daypart_results:
+                daypart_results = _fallback_daypart_weather(start, end)
+
+            return forecasts, daypart_results
         except Exception:
-            return _fallback_weather(start, end)
+            return _fallback_weather(start, end), _fallback_daypart_weather(start, end)
 
 
 def _summarize_weather(condition: str, precip: float, high: float) -> str:
@@ -146,4 +190,52 @@ def _fallback_weather(start: date, end: date) -> List[WeatherForecast]:
         )
         current += timedelta(days=1)
     return forecasts
+
+
+def _fallback_daypart() -> DaypartWeather:
+    return DaypartWeather(
+        summary="Mild conditions",
+        temperature_c=20,
+        precipitation_probability=0.2,
+    )
+
+
+def _fallback_daypart_weather(start: date, end: date) -> List[DayWeather]:
+    results: List[DayWeather] = []
+    current = start
+    while current <= end:
+        fallback_slice = _fallback_daypart()
+        results.append(
+            DayWeather(
+                date=current,
+                morning=fallback_slice,
+                afternoon=fallback_slice,
+                evening=fallback_slice,
+            )
+        )
+        current += timedelta(days=1)
+    return results
+
+
+def _build_daypart(entries: Optional[List[dict]], fallback_summary: str, fallback_temp: float) -> DaypartWeather:
+    if not entries:
+        return DaypartWeather(
+            summary=fallback_summary,
+            temperature_c=fallback_temp,
+            precipitation_probability=0.2,
+        )
+
+    temps = [entry.get("temp", fallback_temp) for entry in entries]
+    pops = [entry.get("pop", 0.0) for entry in entries]
+    conditions = [entry.get("condition", fallback_summary) for entry in entries]
+
+    avg_temp = sum(temps) / len(temps) if temps else fallback_temp
+    avg_pop = sum(pops) / len(pops) if pops else 0.2
+    condition = Counter(conditions).most_common(1)[0][0] if conditions else fallback_summary
+
+    return DaypartWeather(
+        summary=condition.capitalize(),
+        temperature_c=avg_temp,
+        precipitation_probability=min(max(avg_pop, 0.0), 1.0),
+    )
 

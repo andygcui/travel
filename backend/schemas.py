@@ -58,6 +58,21 @@ class WeatherForecast(BaseModel):
     )
 
 
+class DaypartWeather(BaseModel):
+    summary: str
+    temperature_c: float
+    precipitation_probability: float = Field(
+        0.0, description="Percentage chance between 0 and 1"
+    )
+
+
+class DayWeather(BaseModel):
+    date: date
+    morning: DaypartWeather
+    afternoon: DaypartWeather
+    evening: DaypartWeather
+
+
 class FlightSegment(BaseModel):
     carrier: str
     flight_number: str
@@ -221,4 +236,5 @@ class GreenTripItineraryResponse(BaseModel):
     rationale: str
     eco_score: Optional[float] = Field(default=None, description="0-100 sustainability score")
     flights: List[GreenTripFlightOption] = Field(default_factory=list, description="Flight summaries for display")
+    day_weather: List[DayWeather] = Field(default_factory=list, description="Weather snapshots for each day")
 

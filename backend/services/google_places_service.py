@@ -15,6 +15,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY")
 GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api"
+GOOGLE_PLACES_BASE_URL_NEW = "https://places.googleapis.com/v1"
 
 
 async def geocode_destination(destination: str) -> Tuple[Optional[float], Optional[float]]:
@@ -28,25 +29,58 @@ async def geocode_destination(destination: str) -> Tuple[Optional[float], Option
     
     logger.info(f"Geocoding '{destination}' with Google Places API...")
     
-    params = {
-        "query": destination,
-        "key": GOOGLE_PLACES_KEY,
-    }
-    
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            response = await client.get(
-                f"{GOOGLE_PLACES_BASE_URL}/place/textsearch/json",
-                params=params,
+            # Prefer new Places API endpoint if available
+            response = await client.post(
+                f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchText",
+                headers={
+                    "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                    "X-Goog-FieldMask": "places.id,places.displayName,places.location",
+                },
+                json={"textQuery": destination},
             )
             response.raise_for_status()
             data = response.json()
-            
-            if data.get("results") and len(data["results"]) > 0:
-                location = data["results"][0].get("geometry", {}).get("location", {})
+
+            places = data.get("places", [])
+            if places:
+                loc = places[0].get("location", {})
+                lat = loc.get("latitude")
+                lng = loc.get("longitude")
+                if lat is not None and lng is not None:
+                    logger.info(f"Geocoded '{destination}' to ({lat}, {lng}) via Places API (New)")
+                    return lat, lng
+
+            # Fallback to legacy Text Search if needed
+            params = {
+                "query": destination,
+                "key": GOOGLE_PLACES_KEY,
+            }
+            legacy_response = await client.get(
+                f"{GOOGLE_PLACES_BASE_URL}/place/textsearch/json",
+                params=params,
+            )
+            legacy_response.raise_for_status()
+            legacy_data = legacy_response.json()
+
+            if legacy_data.get("results"):
+                location = legacy_data["results"][0].get("geometry", {}).get("location", {})
                 lat, lng = location.get("lat"), location.get("lng")
-                logger.info(f"Geocoded '{destination}' to ({lat}, {lng})")
+                logger.info(f"Geocoded '{destination}' to ({lat}, {lng}) via legacy Places API")
                 return lat, lng
+
+            logger.warning(
+                f"Google Places returned no results for '{destination}'. Response status: "
+                f"{data.get('status') or legacy_data.get('status')} message: "
+                f"{data.get('error_message') or legacy_data.get('error_message')}"
+            )
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Google Places geocoding error %s: %s",
+                exc.response.status_code,
+                exc.response.text,
+            )
         except Exception as e:
             logger.error(f"Google Places geocoding error: {str(e)}")
     
@@ -70,73 +104,85 @@ async def fetch_attractions_google(
     
     pois: List[PointOfInterest] = []
     
-    # Build query based on preferences
-    query = destination
-    if preferences:
-        query += f" {', '.join(preferences)} attractions"
-    
-    params = {
-        "query": query,
-        "key": GOOGLE_PLACES_KEY,
-        "type": "tourist_attraction",
-    }
-    
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            # Use text search
-            response = await client.get(
-                f"{GOOGLE_PLACES_BASE_URL}/place/textsearch/json",
-                params=params,
+            text_query = destination
+            if preferences:
+                text_query += f" {', '.join(preferences)} attractions"
+
+            response = await client.post(
+                f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchText",
+                headers={
+                    "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                    "X-Goog-FieldMask": "places.displayName,places.primaryType,places.location,places.formattedAddress",
+                },
+                json={
+                    "textQuery": text_query,
+                },
             )
             response.raise_for_status()
             data = response.json()
-            
-            for place in data.get("results", [])[:limit]:
-                location = place.get("geometry", {}).get("location", {})
+
+            for place in data.get("places", [])[:limit]:
+                location = place.get("location", {})
                 pois.append(
                     PointOfInterest(
-                        name=place.get("name", ""),
-                        category=place.get("types", ["attraction"])[0] if place.get("types") else "attraction",
-                        description=place.get("formatted_address", ""),
-                        latitude=location.get("lat"),
-                        longitude=location.get("lng"),
+                        name=place.get("displayName", {}).get("text", ""),
+                        category=place.get("primaryType", "attraction"),
+                        description=place.get("formattedAddress", ""),
+                        latitude=location.get("latitude"),
+                        longitude=location.get("longitude"),
                     )
                 )
-            
-            # If we have lat/lon, also try nearby search
+
             if latitude and longitude and len(pois) < limit:
-                nearby_params = {
-                    "location": f"{latitude},{longitude}",
-                    "radius": 5000,
-                    "type": "tourist_attraction",
-                    "key": GOOGLE_PLACES_KEY,
-                }
-                
-                nearby_response = await client.get(
-                    f"{GOOGLE_PLACES_BASE_URL}/place/nearbysearch/json",
-                    params=nearby_params,
+                nearby_response = await client.post(
+                    f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchNearby",
+                    headers={
+                        "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                        "X-Goog-FieldMask": "places.displayName,places.primaryType,places.location,places.formattedAddress",
+                    },
+                    json={
+                        "locationRestriction": {
+                            "circle": {
+                                "center": {"latitude": latitude, "longitude": longitude},
+                                "radius": 5000,
+                            }
+                        },
+                        "includedTypes": ["tourist_attraction"],
+                    },
                 )
                 nearby_response.raise_for_status()
                 nearby_data = nearby_response.json()
-                
+
                 existing_names = {poi.name for poi in pois}
-                for place in nearby_data.get("results", []):
+                for place in nearby_data.get("places", []):
+                    name = place.get("displayName", {}).get("text", "")
+                    if not name or name in existing_names:
+                        continue
+                    location = place.get("location", {})
+                    pois.append(
+                        PointOfInterest(
+                            name=name,
+                            category=place.get("primaryType", "attraction"),
+                            description=place.get("formattedAddress", ""),
+                            latitude=location.get("latitude"),
+                            longitude=location.get("longitude"),
+                        )
+                    )
                     if len(pois) >= limit:
                         break
-                    if place.get("name") not in existing_names:
-                        location = place.get("geometry", {}).get("location", {})
-                        pois.append(
-                            PointOfInterest(
-                                name=place.get("name", ""),
-                                category=place.get("types", ["attraction"])[0] if place.get("types") else "attraction",
-                                description=place.get("vicinity", ""),
-                                latitude=location.get("lat"),
-                                longitude=location.get("lng"),
-                            )
-                        )
-            
+
             return pois if pois else _fallback_pois(destination)
-        except Exception:
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Google Places attractions error %s: %s",
+                exc.response.status_code,
+                exc.response.text,
+            )
+            return _fallback_pois(destination)
+        except Exception as e:
+            logger.error(f"Google Places attractions error: {str(e)}")
             return _fallback_pois(destination)
 
 
