@@ -24,8 +24,9 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [activeMarker, setActiveMarker] = useState<Place | null>(null);
   const [details, setDetails] = useState<any>(null);
-  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }[]>([]);
+  const [coordinates, setCoordinates] = useState<({ lat: number; lng: number } | null)[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
   const coordinateCache = useRef<Map<string, { lat: number; lng: number }>>(new Map());
 
@@ -37,20 +38,31 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
 
   // Initialize coordinates immediately from backend data (if available)
   useEffect(() => {
+    // Skip if attractions is empty
+    if (!attractions || attractions.length === 0) {
+      setCoordinates([]);
+      setLoading(false);
+      return;
+    }
+    
+    // Reset loading state
+    setLoading(true);
+    
     // First, extract any existing coordinates from attractions prop
-    const initialCoords: { lat: number; lng: number }[] = [];
+    const initialCoords: ({ lat: number; lng: number } | null)[] = [];
     const needsGeocoding: number[] = [];
 
     attractions.forEach((a, i) => {
-      if (a.lat && a.lng) {
+      if (a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
         // Use existing coordinates from backend
-        initialCoords.push({ lat: a.lat, lng: a.lng });
+        const coord = { lat: a.lat, lng: a.lng };
+        initialCoords.push(coord);
         const cacheKey = `${a.name}-${destination}`;
-        coordinateCache.current.set(cacheKey, { lat: a.lat, lng: a.lng });
+        coordinateCache.current.set(cacheKey, coord);
       } else {
         // Mark for geocoding
         needsGeocoding.push(i);
-        initialCoords.push(null as any); // Placeholder to maintain order
+        initialCoords.push(null); // Placeholder to maintain order
       }
     });
 
@@ -58,8 +70,9 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     setCoordinates(initialCoords);
 
     // Set map center immediately if we have at least one coordinate
-    if (initialCoords.length > 0 && initialCoords[0] && initialCoords[0].lat && initialCoords[0].lng) {
-      setMapCenter(initialCoords[0]);
+    const firstValidCoord = initialCoords.find(c => c && c.lat && c.lng);
+    if (firstValidCoord) {
+      setMapCenter(firstValidCoord);
       setLoading(false); // Don't wait if we have coordinates from backend
     }
 
@@ -79,10 +92,11 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
       }
 
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      const updatedCoords = [...initialCoords];
+      const updatedCoords: ({ lat: number; lng: number } | null)[] = [...initialCoords];
 
       for (const i of needsGeocoding) {
         const a = attractions[i];
+        if (!a) continue;
         
         // Check cache first
         const cacheKey = `${a.name}-${destination}`;
@@ -102,13 +116,15 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           
           if (data.results?.[0]?.geometry?.location) {
             const loc = data.results[0].geometry.location;
-            updatedCoords[i] = loc;
-            coordinateCache.current.set(cacheKey, loc);
+            updatedCoords[i] = { lat: loc.lat, lng: loc.lng };
+            coordinateCache.current.set(cacheKey, { lat: loc.lat, lng: loc.lng });
           } else {
             console.warn(`Could not geocode: ${a.name}`);
+            // Keep as null
           }
         } catch (error) {
           console.error(`Error geocoding ${a.name}:`, error);
+          // Keep as null
         }
       }
 
@@ -207,8 +223,17 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
 
     if (typeof google !== "undefined" && google.maps) {
       const bounds = new google.maps.LatLngBounds();
-      coordinates.forEach((c) => bounds.extend(c as any));
-      mapRef.current.fitBounds(bounds, 64); // padding in pixels
+      let hasValidCoords = false;
+      coordinates.forEach((c) => {
+        if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
+          bounds.extend(c as any);
+          hasValidCoords = true;
+        }
+      });
+      // Only fit bounds if we have at least one valid coordinate
+      if (hasValidCoords) {
+        mapRef.current.fitBounds(bounds, 64); // padding in pixels
+      }
     }
   }, [coordinates]);
 
@@ -237,7 +262,12 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
 
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl">
-        <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
+        <LoadScript 
+          googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}
+          onLoad={() => {
+            setIsGoogleMapsLoaded(true);
+          }}
+        >
         <GoogleMap
           mapContainerStyle={{ width: "100%", height: "100%" }}
           center={displayCenter}
@@ -250,21 +280,37 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           }}
           onLoad={(map) => {
             mapRef.current = map;
+            setIsGoogleMapsLoaded(true);
             // Auto-fit bounds when map loads if we have coordinates
             if (coordinates.length > 0 && typeof google !== "undefined" && google.maps) {
               const bounds = new google.maps.LatLngBounds();
-              coordinates.forEach((c) => bounds.extend(c as any));
-              map.fitBounds(bounds, 64);
+              let hasValidCoords = false;
+              coordinates.forEach((c) => {
+                if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
+                  bounds.extend(c as any);
+                  hasValidCoords = true;
+                }
+              });
+              // Only fit bounds if we have at least one valid coordinate
+              if (hasValidCoords) {
+                map.fitBounds(bounds, 64);
+              }
             }
           }}
         >
           {/* Markers with pushpin style (quiet fern green) */}
-          {attractions.map((a, i) => {
-            // Priority: Use coordinates from state, fallback to attraction's lat/lng, then check if still geocoding
-            const coord = coordinates[i] || (a.lat && a.lng ? { lat: a.lat, lng: a.lng } : null);
+          {isGoogleMapsLoaded && attractions.map((a, i) => {
+            // Priority: Use coordinates from state, fallback to attraction's lat/lng
+            let coord = coordinates[i];
+            if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
+              coord = { lat: a.lat, lng: a.lng };
+            }
             
-            // Don't render if no coordinate and google maps not ready
-            if (!coord || !coord.lat || !coord.lng || (typeof google === "undefined" || !google.maps)) return null;
+            // Don't render if no coordinate
+            if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
+            
+            // Ensure google.maps is available before creating Point
+            if (typeof google === "undefined" || !google.maps || !google.maps.Point) return null;
             
             return (
               <Marker
@@ -289,12 +335,18 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           })}
 
           {/* Custom labels with background rectangles above pushpins */}
-          {attractions.map((a, i) => {
+          {isGoogleMapsLoaded && attractions.map((a, i) => {
             // Priority: Use coordinates from state, fallback to attraction's lat/lng
-            const coord = coordinates[i] || (a.lat && a.lng ? { lat: a.lat, lng: a.lng } : null);
+            let coord = coordinates[i];
+            if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
+              coord = { lat: a.lat, lng: a.lng };
+            }
             
-            // Don't render if no coordinate and google maps not ready
-            if (!coord || !coord.lat || !coord.lng || (typeof google === "undefined" || !google.maps)) return null;
+            // Don't render if no coordinate
+            if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
+            
+            // Ensure google.maps is available
+            if (typeof google === "undefined" || !google.maps) return null;
             
             return (
               <OverlayView
