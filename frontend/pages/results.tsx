@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { Bar } from "react-chartjs-2";
 import { supabase } from "../lib/supabase";
+import ChatPlanner from "../components/ChatPlanner";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -82,6 +83,7 @@ export default function Results() {
   const [saved, setSaved] = useState(false);
   const [tripName, setTripName] = useState("");
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
@@ -174,6 +176,12 @@ export default function Results() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleItineraryUpdate = (updatedItinerary: any) => {
+    setItinerary(updatedItinerary);
+    sessionStorage.setItem("itinerary", JSON.stringify(updatedItinerary));
+    setCurrentDayIndex(0);
   };
 
   if (!itinerary) {
@@ -297,7 +305,11 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className={`mx-auto px-6 py-10 transition-all ${
+        showChat 
+          ? "max-w-[calc(100%-24rem)] min-w-0" 
+          : "max-w-6xl"
+      }`}>
         <section className="grid gap-10 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
           <div className="space-y-6">
             <div className="rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-xl shadow-emerald-200/50">
@@ -502,6 +514,32 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
           </div>
         </section>
       </main>
+
+      {/* Chat Planner Sidebar */}
+      {showChat && (
+        <div className="fixed right-0 top-0 z-50 h-full w-96 border-l border-emerald-200 bg-white shadow-2xl transition-transform">
+          <div className="h-full">
+            <ChatPlanner
+              itinerary={itinerary}
+              onItineraryUpdate={handleItineraryUpdate}
+              onClose={() => setShowChat(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => setShowChat(!showChat)}
+        className={`fixed bottom-6 right-6 z-50 flex h-16 w-16 items-center justify-center rounded-full shadow-lg transition-all ${
+          showChat
+            ? "bg-emerald-500 text-white"
+            : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-600 hover:to-emerald-500"
+        }`}
+        title={showChat ? "Close chat" : "Open chat planner"}
+      >
+        {showChat ? "✕" : "💬"}
+      </button>
 
       {/* Save Trip Modal */}
       {showSaveModal && (
