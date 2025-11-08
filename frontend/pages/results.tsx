@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { Bar } from "react-chartjs-2";
+import { supabase } from "../lib/supabase";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -76,6 +77,11 @@ export default function Results() {
   const [itinerary, setItinerary] = useState<ItineraryResponse | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [currentDayIndex, setCurrentDayIndex] = useState(0);
+  const [user, setUser] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [tripName, setTripName] = useState("");
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
@@ -83,9 +89,20 @@ export default function Results() {
       const parsed: ItineraryResponse = JSON.parse(stored);
       setItinerary(parsed);
       setCurrentDayIndex(0);
+      // Set default trip name
+      setTripName(`${parsed.destination} - ${parsed.start_date || new Date().toLocaleDateString()}`);
     } else {
       router.push("/");
     }
+
+    // Check for authenticated user
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
   }, [router]);
 
   const handleRegenerate = async (newMode: "price-optimal" | "balanced") => {
@@ -117,6 +134,45 @@ export default function Results() {
       alert("Failed to regenerate itinerary");
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const handleSaveTrip = async () => {
+    if (!user || !itinerary) {
+      setShowSaveModal(true);
+      return;
+    }
+
+    if (!tripName.trim()) {
+      alert("Please enter a trip name");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("saved_trips")
+        .insert({
+          user_id: user.id,
+          trip_name: tripName.trim(),
+          destination: itinerary.destination,
+          start_date: itinerary.start_date || null,
+          end_date: itinerary.end_date || null,
+          num_days: itinerary.num_days,
+          budget: itinerary.budget,
+          mode: itinerary.mode,
+          itinerary_data: itinerary,
+        });
+
+      if (error) throw error;
+
+      setSaved(true);
+      setShowSaveModal(false);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      alert(`Failed to save trip: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -196,6 +252,27 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm text-emerald-700">
+            {user && (
+              <button
+                onClick={handleSaveTrip}
+                disabled={saving || saved}
+                className={`rounded-full px-4 py-2 font-medium transition ${
+                  saved
+                    ? "bg-emerald-500 text-white"
+                    : "border border-emerald-200 hover:border-emerald-300 hover:text-emerald-900"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save Trip"}
+              </button>
+            )}
+            {!user && (
+              <button
+                onClick={() => setShowSaveModal(true)}
+                className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900"
+              >
+                💾 Save Trip
+              </button>
+            )}
             <button
               onClick={() => handleRegenerate("price-optimal")}
               disabled={regenerating || itinerary.mode === "price-optimal"}
@@ -425,6 +502,71 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
           </div>
         </section>
       </main>
+
+      {/* Save Trip Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
+            <button
+              onClick={() => setShowSaveModal(false)}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+            
+            <h2 className="mb-4 text-2xl font-bold text-emerald-900">
+              {user ? "Save Trip" : "Sign In to Save Trip"}
+            </h2>
+
+            {!user ? (
+              <div className="space-y-4">
+                <p className="text-sm text-emerald-700">
+                  Please sign in to save your trips and access them from your dashboard.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    router.push("/");
+                  }}
+                  className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
+                >
+                  Go to Sign In
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-emerald-900">
+                    Trip Name
+                  </label>
+                  <input
+                    type="text"
+                    value={tripName}
+                    onChange={(e) => setTripName(e.target.value)}
+                    placeholder="e.g. Paris Summer 2025"
+                    className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowSaveModal(false)}
+                    className="flex-1 rounded-lg border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveTrip}
+                    disabled={saving || !tripName.trim()}
+                    className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Saving..." : "Save Trip"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

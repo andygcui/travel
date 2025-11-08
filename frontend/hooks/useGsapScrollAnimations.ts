@@ -6,23 +6,32 @@ export default function useGsapScrollAnimations() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    gsap.registerPlugin(ScrollTrigger);
+    try {
+      gsap.registerPlugin(ScrollTrigger);
+    } catch (error) {
+      console.error("Error registering GSAP plugins:", error);
+      return;
+    }
 
     // Reveal elements with fade and slide up
-    gsap.utils.toArray<HTMLElement>(".reveal").forEach((el) => {
-      gsap.from(el, {
-        scrollTrigger: {
-          trigger: el,
-          start: "top 85%",
-          end: "bottom 20%",
-          toggleActions: "play none none reverse",
-        },
-        opacity: 0,
-        y: 60,
-        duration: 1.3,
-        ease: "power2.out",
+    try {
+      gsap.utils.toArray<HTMLElement>(".reveal").forEach((el) => {
+        gsap.from(el, {
+          scrollTrigger: {
+            trigger: el,
+            start: "top 85%",
+            end: "bottom 20%",
+            toggleActions: "play none none reverse",
+          },
+          opacity: 0,
+          y: 60,
+          duration: 1.3,
+          ease: "power2.out",
+        });
       });
-    });
+    } catch (error) {
+      console.error("Error setting up reveal animations:", error);
+    }
 
     // Parallax backgrounds - move slower than scroll
     gsap.utils.toArray<HTMLElement>(".parallax-bg").forEach((bg) => {
@@ -104,7 +113,11 @@ export default function useGsapScrollAnimations() {
 
     // Cleanup
     return () => {
-      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+      try {
+        ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+      } catch (error) {
+        console.error("Error cleaning up ScrollTriggers:", error);
+      }
     };
   }, []);
 }

@@ -234,12 +234,21 @@ export default function Home() {
             <div className="text-2xl font-bold text-[#3cb371]">GreenTrip</div>
             <div className="flex items-center gap-4">
               {user ? (
-                <button
-                  onClick={() => router.push("/profile")}
-                  className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
-                >
-                  Profile
-                </button>
+                <>
+                  <a
+                    href="/dashboard"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                  >
+                    📊 Dashboard
+                  </a>
+                  <span className="text-sm text-white/80">{user.email}</span>
+                  <button
+                    onClick={handleSignOut}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                  >
+                    Sign Out
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={() => setShowAuthModal(true)}
