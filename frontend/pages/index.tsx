@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import Head from "next/head";
 import { supabase } from "../lib/supabase";
 import AuthModal from "../components/AuthModal";
+import useGsapScrollAnimations from "../hooks/useGsapScrollAnimations";
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +24,9 @@ export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
+
+  // Initialize GSAP scroll animations
+  useGsapScrollAnimations();
 
   const preferenceOptions = [
     "Food",
@@ -227,44 +231,21 @@ export default function Home() {
           }`}
         >
           <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <div className="text-2xl font-bold text-[#3cb371]">TripSmith</div>
-            <div className="hidden items-center gap-8 md:flex">
-              <a
-                href="#experiences"
-                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
-              >
-                Experiences
-              </a>
-              <a
-                href="#sustainability"
-                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
-              >
-                Sustainability
-              </a>
-              <a
-                href="#membership"
-                className="text-sm font-medium text-white transition hover:text-[#3cb371]"
-              >
-                Membership
-              </a>
-            </div>
+            <div className="text-2xl font-bold text-[#3cb371]">GreenTrip</div>
             <div className="flex items-center gap-4">
               {user ? (
-                <>
-                  <span className="text-sm text-white/80">{user.email}</span>
-                  <button
-                    onClick={handleSignOut}
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
-                  >
-                    Sign Out
-                  </button>
-                </>
+                <button
+                  onClick={() => router.push("/profile")}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                >
+                  Profile
+                </button>
               ) : (
                 <button
                   onClick={() => setShowAuthModal(true)}
                   className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
                 >
-                  Sign In / Sign Up
+                  Login
                 </button>
               )}
             </div>
@@ -272,14 +253,17 @@ export default function Home() {
         </header>
 
         {/* Hero Section */}
-        <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0f3d2e] via-[#1b5e20] to-[#0f3d2e] px-6 pt-24 pb-32">
-          <div className="mx-auto max-w-4xl text-center">
-            <div className="animate-fade-in-up space-y-6">
-              <div className="mb-4 text-5xl">🌍</div>
-              <h1 className="text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
+        <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0f3d2e] via-[#1b5e20] to-[#0f3d2e] px-6 pt-24 pb-32 overflow-hidden">
+          {/* Parallax background layer */}
+          <div className="parallax-bg absolute inset-0 bg-gradient-to-br from-[#0f3d2e] via-[#1b5e20] to-[#0f3d2e]" />
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="mx-auto max-w-4xl text-center relative z-10">
+            <div className="hero-text space-y-6">
+              <div className="reveal mb-4 text-5xl">🌍</div>
+              <h1 className="reveal text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
                 Smarter Trips. Smaller Footprints.
               </h1>
-              <p className="mx-auto max-w-2xl text-lg md:text-xl text-[#eaf6ee] mt-4">
+              <p className="reveal mx-auto max-w-2xl text-lg md:text-xl text-[#eaf6ee] mt-4">
                 Discover smarter, greener journeys curated to balance cost,
                 experience, and sustainability.
               </p>
@@ -292,11 +276,11 @@ export default function Home() {
           <div className="mx-auto max-w-6xl">
             <form
               onSubmit={handlePlanTrip}
-              className="rounded-2xl bg-white/95 backdrop-blur-sm p-8 shadow-2xl border border-green-100"
+              className="reveal rounded-2xl bg-white/95 backdrop-blur-sm p-8 shadow-2xl border border-green-100"
             >
               {/* First Row: 5 Fields */}
               <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-5">
-                <div>
+                <div className="form-field">
                   <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Traveling from
                   </label>
@@ -308,7 +292,7 @@ export default function Home() {
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
-                <div>
+                <div className="form-field">
                   <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Destination to
                   </label>
@@ -320,7 +304,7 @@ export default function Home() {
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
-                <div>
+                <div className="form-field">
                   <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Start Date
                   </label>
@@ -331,7 +315,7 @@ export default function Home() {
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
-                <div>
+                <div className="form-field">
                   <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     End Date
                   </label>
@@ -343,7 +327,7 @@ export default function Home() {
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
-                <div>
+                <div className="form-field">
                   <label className="mb-2 block text-sm font-semibold text-[#0f3d2e]">
                     Budget (USD)
                   </label>
@@ -516,12 +500,12 @@ export default function Home() {
         </section>
 
         {/* Mission Section */}
-        <section className="bg-white px-6 py-24">
+        <section className="bg-white px-6 pt-12 pb-12">
           <div className="mx-auto max-w-6xl">
-            <h2 className="mb-6 text-center text-4xl font-bold text-[#0f3d2e]">
+            <h2 className="reveal mb-6 text-center text-4xl font-bold text-[#0f3d2e]">
               Our Mission
             </h2>
-            <p className="mx-auto max-w-3xl text-center text-lg text-[#1b5e20]">
+            <p className="reveal mx-auto max-w-3xl text-center text-lg text-[#1b5e20]">
               We're building the future of sustainable, data-driven travel
               optimization. Our platform creates carbon-aware itineraries that
               balance adventure, value, and environmental responsibility—helping
@@ -530,7 +514,7 @@ export default function Home() {
 
             {/* Icon Cards */}
             <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
-              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">🌍</div>
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Eco Optimization
@@ -540,7 +524,7 @@ export default function Home() {
                   maximizing your experience.
                 </p>
               </div>
-              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">💸</div>
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Value Transparency
@@ -550,7 +534,7 @@ export default function Home() {
                   you're paying for.
                 </p>
               </div>
-              <div className="group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
+              <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
                 <div className="mb-4 text-5xl">✈️</div>
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Personalized Planning
@@ -567,7 +551,7 @@ export default function Home() {
         {/* Testimonials Section */}
         <section className="bg-[#eaf6ee] px-6 py-24">
           <div className="mx-auto max-w-6xl">
-            <h2 className="mb-12 text-center text-4xl font-bold text-[#0f3d2e]">
+            <h2 className="reveal mb-12 text-center text-4xl font-bold text-[#0f3d2e]">
               Traveler Stories
             </h2>
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
@@ -593,7 +577,7 @@ export default function Home() {
               ].map((testimonial, idx) => (
                 <div
                   key={idx}
-                  className="group rounded-2xl bg-white p-8 shadow-md transition hover:shadow-xl"
+                  className="testimonial-card group rounded-2xl bg-white p-8 shadow-md transition hover:shadow-xl"
                 >
                   <div className="mb-4 flex">
                     {[...Array(testimonial.rating)].map((_, i) => (
@@ -686,25 +670,6 @@ export default function Home() {
         </footer>
       </div>
 
-      <style jsx global>{`
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in-up {
-          animation: fade-in-up 0.8s ease-out;
-        }
-        /* Smooth scrolling */
-        html {
-          scroll-behavior: smooth;
-        }
-      `}</style>
 
       <AuthModal
         isOpen={showAuthModal}
