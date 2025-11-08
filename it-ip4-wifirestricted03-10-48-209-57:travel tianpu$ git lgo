@@ -1,0 +1,41 @@
+[33mcommit e1465d706f865f3b7533b2f3e4eb49ee7be68ab2[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Brooke Xu <brooke.lingxi@gmail.com>
+Date:   Sat Nov 8 01:18:03 2025 -0500
+
+    added start point
+
+[33mcommit dc6a1b3c70f60cb39278c11a2a6015b1ec98ab85[m
+Author: Brooke Xu <brooke.lingxi@gmail.com>
+Date:   Sat Nov 8 01:04:22 2025 -0500
+
+    changes
+
+[33mcommit 4eecc7285525967eeddf4a238017265f0ce4d487[m
+Author: Tian-James-Pu <tian.james.pu@gmail.com>
+Date:   Sat Nov 8 00:44:01 2025 -0500
+
+    Update requirements.txt
+
+[33mcommit 9fa2a2f8d80e6884ff4cbfd171677ab8b6d49abe[m
+Author: andygcui <andygcui@gmail.com>
+Date:   Sat Nov 8 00:25:42 2025 -0500
+
+    UI changes
+
+[33mcommit 2cbf88e88b152f629268f29a2c7422a08efbf525[m
+Author: Tian-James-Pu <tian.james.pu@gmail.com>
+Date:   Fri Nov 7 23:42:27 2025 -0500
+
+    Create dedalus_test.py
+
+[33mcommit 05ce76c1f56728cb6f0e341219cf2aa026a89a97[m
+Author: andygcui <andygcui@gmail.com>
+Date:   Fri Nov 7 22:47:49 2025 -0500
+
+    Basic structure
+
+[33mcommit aa831fdce8299da94e7d751c62900440409404c6[m
+Author: andygcui <andygcui@gmail.com>
+Date:   Fri Nov 7 20:15:48 2025 -0500
+
+    basic build
