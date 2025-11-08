@@ -107,7 +107,9 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         return_date=end_date.isoformat(),
         adults=1,
     )
-    logger.info(f"Found {len(flights)} flight options")
+    logger.info(f"Found {len(flights)} flight options (pre-dedupe)")
+    flights = _dedupe_flight_options(flights)
+    logger.info(f"After dedupe: {len(flights)} unique flight options")
     
     # Fetch hotels
     logger.info(f"Fetching hotels near {latitude}, {longitude}")
@@ -360,6 +362,33 @@ def _compute_flight_eco_score(emissions_kg: Optional[float]) -> Optional[float]:
     if emissions_kg is None:
         return None
     return max(0.0, min(100.0, 100.0 - emissions_kg))
+
+
+def _dedupe_flight_options(flights: List[FlightOption]) -> List[FlightOption]:
+    """Remove duplicate flight options that are identical by schedule and price.
+
+    Two options are considered duplicates if they have the same ordered list of
+    segments (carrier, flight_number, origin, destination, departure, arrival)
+    and the same price (rounded to cents). UUIDs may differ, so we ignore IDs.
+    """
+    seen: set[str] = set()
+    unique: List[FlightOption] = []
+    for opt in flights:
+        if not opt.segments:
+            continue
+        key_parts: List[str] = []
+        for seg in opt.segments:
+            dep = seg.departure.isoformat() if isinstance(seg.departure, (date,)) else seg.departure.isoformat()
+            arr = seg.arrival.isoformat() if isinstance(seg.arrival, (date,)) else seg.arrival.isoformat()
+            key_parts.append(
+                f"{seg.carrier}|{seg.flight_number}|{seg.origin}|{seg.destination}|{dep}|{arr}"
+            )
+        key = f"{';'.join(key_parts)}|{round(opt.price, 2)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(opt)
+    return unique
 
 
 def _summarize_flights(flights: List[FlightOption]) -> List[GreenTripFlightOption]:

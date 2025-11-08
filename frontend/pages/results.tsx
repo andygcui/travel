@@ -239,7 +239,6 @@ const extractPlaceNames = (text: string): string[] => {
 export default function Results() {
   const router = useRouter();
   const [itinerary, setItinerary] = useState<ItineraryResponse | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
   const [currentDayIndex, setCurrentDayIndex] = useState(0);
   const [user, setUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -270,37 +269,7 @@ export default function Results() {
     });
   }, [router]);
 
-  const handleRegenerate = async (newMode: "price-optimal" | "balanced") => {
-    if (!itinerary) return;
-
-    setRegenerating(true);
-    try {
-      const response = await fetch("http://localhost:8000/generate_itinerary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination: itinerary.destination,
-          origin: (itinerary as any).origin || undefined,
-          start_date: itinerary.start_date,
-          end_date: itinerary.end_date,
-          num_days: itinerary.num_days,
-          budget: itinerary.budget,
-          preferences: [],
-          mode: newMode,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Failed to regenerate");
-
-      const data: ItineraryResponse = await response.json();
-      sessionStorage.setItem("itinerary", JSON.stringify(data));
-      setItinerary(data);
-    } catch (err) {
-      alert("Failed to regenerate itinerary");
-    } finally {
-      setRegenerating(false);
-    }
-  };
+  // Regeneration logic removed with mode buttons
 
   const handleSaveTrip = async () => {
     if (!user || !itinerary) {
@@ -497,6 +466,22 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
     ],
   };
 
+  // Build unique key for flight comparison (ignore server-generated id)
+  const flightKey = (f: FlightOption) =>
+    `${f.carrier}|${f.origin}|${f.destination}|${f.departure}|${f.arrival}|${Math.round((f.price || 0) * 100)}`;
+
+  const getUniqueByKey = (flights: FlightOption[]) => {
+    const seen = new Set<string>();
+    const out: FlightOption[] = [];
+    for (const f of flights) {
+      const k = flightKey(f);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(f);
+    }
+    return out;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-950">
       <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
@@ -542,20 +527,6 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
               </button>
             )}
             <button
-              onClick={() => handleRegenerate("price-optimal")}
-              disabled={regenerating || itinerary.mode === "price-optimal"}
-              className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              💸 Price Mode
-            </button>
-            <button
-              onClick={() => handleRegenerate("balanced")}
-              disabled={regenerating || itinerary.mode === "balanced"}
-              className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              🌱 Balanced Mode
-            </button>
-            <button
               onClick={() => router.push("/")}
               className="rounded-full border border-emerald-200 px-4 py-2 transition hover:border-emerald-300 hover:text-emerald-900"
             >
@@ -580,7 +551,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                     {itinerary.destination}
                   </h2>
                   <p className="text-sm text-emerald-700">
-                    {itinerary.num_days} days • {itinerary.mode === "price-optimal" ? "Price-optimal" : "Balanced"} mode
+                    {itinerary.num_days} days
                   </p>
                 </div>
                 <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700">
@@ -589,25 +560,22 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
               </div>
             </div>
 
+            {/* Optimized Flights Section */}
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                Flight options curated for you
+                Eco-Friendly Flights (sorted by lowest CO₂)
               </h3>
               <div className="grid gap-4 md:grid-cols-2">
                 {itinerary.flights && itinerary.flights.length > 0 ? (
-                  itinerary.flights
-                    .slice()
-                    .sort((a, b) => (b.eco_score || 0) - (a.eco_score || 0))
-                    .map((flight, index) => (
+                  getUniqueByKey(
+                    [...itinerary.flights].sort(
+                      (a, b) => (a.emissions_kg ?? Number.POSITIVE_INFINITY) - (b.emissions_kg ?? Number.POSITIVE_INFINITY)
+                    )
+                  ).map((flight, index) => (
                       <div
-                        key={flight.id || index}
+                        key={flight.id || `eco-${index}`}
                         className="relative rounded-2xl border border-emerald-100 bg-white/95 p-5 shadow-lg shadow-emerald-200/40"
                       >
-                        {index === 0 && (
-                          <span className="absolute -top-3 right-4 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-md">
-                            Eco leader • +100 carbon credits
-                          </span>
-                        )}
                         <div className="flex items-center justify-between text-sm text-emerald-800">
                           <span className="font-semibold">
                             {flight.origin} → {flight.destination}
@@ -620,11 +588,50 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                         <div className="mt-3 flex items-center justify-between text-xs">
                           <span className="font-medium text-emerald-700">{flight.carrier}</span>
                           <span className="rounded-full border border-emerald-200 px-2 py-1 text-emerald-600">
-                            Eco score: {flight.eco_score ?? "N/A"}
+                            CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
                           </span>
                         </div>
+                        <div className="mt-2 text-xs text-emerald-600">Eco score: {flight.eco_score ?? "N/A"}</div>
                       </div>
                     ))
+                ) : (
+                  <div className="rounded-2xl border border-emerald-100 bg-white/90 p-6 text-sm text-emerald-700">
+                    Flight details will appear here once available.
+                  </div>
+                )}
+              </div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600 mt-8">
+                Price-Optimized Flights (sorted by lowest price)
+              </h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                {itinerary.flights && itinerary.flights.length > 0 ? (
+                  getUniqueByKey(
+                    [...itinerary.flights].sort(
+                      (a, b) => (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY)
+                    )
+                  ).map((flight, index) => (
+                      <div
+                        key={flight.id || `price-${index}`}
+                        className="relative rounded-2xl border border-emerald-100 bg-white/95 p-5 shadow-lg shadow-emerald-200/40"
+                      >
+                        <div className="flex items-center justify-between text-sm text-emerald-800">
+                          <span className="font-semibold">
+                            {flight.origin} → {flight.destination}
+                          </span>
+                          <span>{formatPrice(flight.price, flight.currency)}</span>
+                        </div>
+                        <p className="mt-2 text-xs text-emerald-600">
+                          {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)}
+                        </p>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                          <span className="font-medium text-emerald-700">{flight.carrier}</span>
+                          <span className="rounded-full border border-emerald-200 px-2 py-1 text-emerald-600">
+                            Price: {formatPrice(flight.price, flight.currency)}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-emerald-600">CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg • Eco score: {flight.eco_score ?? "N/A"}</div>
+                      </div>
+                  ))
                 ) : (
                   <div className="rounded-2xl border border-emerald-100 bg-white/90 p-6 text-sm text-emerald-700">
                     Flight details will appear here once available.

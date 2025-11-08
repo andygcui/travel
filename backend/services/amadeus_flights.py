@@ -60,12 +60,12 @@ async def fetch_flights_amadeus(
     
     if not AMADEUS_API_KEY or not AMADEUS_API_SECRET:
         logger.warning("Amadeus API keys not set, using fallback data")
-        return _fallback_flights(origin, destination, departure_date)
+        return _fallback_flights(origin, destination, departure_date, return_date)
     
     token = await get_amadeus_token()
     if not token:
         logger.warning("Failed to get Amadeus token, using fallback data")
-        return _fallback_flights(origin, destination, departure_date)
+        return _fallback_flights(origin, destination, departure_date, return_date)
     
     logger.info("Got Amadeus token, fetching flights...")
     
@@ -123,29 +123,70 @@ async def fetch_flights_amadeus(
                 )
             
             logger.info(f"Amadeus returned {len(flights)} flights")
-            return flights if flights else _fallback_flights(origin, destination, departure_date)
+            return flights if flights else _fallback_flights(origin, destination, departure_date, return_date)
         except Exception as e:
             logger.error(f"Amadeus API error: {str(e)}, using fallback")
-            return _fallback_flights(origin, destination, departure_date)
+            return _fallback_flights(origin, destination, departure_date, return_date)
 
+def _fallback_flights(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: Optional[str] = None,
+) -> List[FlightOption]:
+    """Fallback flight data when API is unavailable.
 
-def _fallback_flights(origin: str, destination: str, departure_date: str) -> List[FlightOption]:
-    """Fallback flight data when API is unavailable"""
-    return [
-        FlightOption(
-            id=str(uuid.uuid4()),
-            price=450.0,
-            currency="USD",
-            segments=[
+    Generate multiple realistic-looking options with varied prices, carriers,
+    departure times, durations, and include a return segment when a return
+    date is provided. This helps the UI display diverse choices.
+    """
+    carriers = ["AA", "DL", "UA", "BA", "AF"]
+    base_prices = [399.0, 429.0, 475.0, 515.0, 559.0]
+    depart_times = ["06:30:00", "09:15:00", "12:45:00", "15:20:00", "20:10:00"]
+    durations_minutes = [380, 420, 455, 495, 540]  # 6h20, 7h, 7h35, 8h15, 9h
+
+    options: List[FlightOption] = []
+    for i in range(len(base_prices)):
+        dep_dt = datetime.fromisoformat(f"{departure_date}T{depart_times[i]}")
+        arr_dt = dep_dt + timedelta(minutes=durations_minutes[i])
+
+        segments = [
+            FlightSegment(
+                carrier=carriers[i % len(carriers)],
+                flight_number=f"{1000 + i}",
+                origin=origin,
+                destination=destination,
+                departure=dep_dt,
+                arrival=arr_dt,
+            )
+        ]
+
+        # Add return segment if return_date provided
+        if return_date:
+            # Stagger return times differently for variety
+            ret_dep_times = ["07:10:00", "11:00:00", "13:35:00", "17:25:00", "21:15:00"]
+            ret_durations = [395, 430, 465, 505, 545]
+            rdep = datetime.fromisoformat(f"{return_date}T{ret_dep_times[i]}")
+            rarr = rdep + timedelta(minutes=ret_durations[i])
+            segments.append(
                 FlightSegment(
-                    carrier="AA",
-                    flight_number="1234",
-                    origin=origin,
-                    destination=destination,
-                    departure=datetime.fromisoformat(f"{departure_date}T10:00:00"),
-                    arrival=datetime.fromisoformat(f"{departure_date}T14:30:00"),
+                    carrier=carriers[(i + 1) % len(carriers)],
+                    flight_number=f"{2000 + i}",
+                    origin=destination,
+                    destination=origin,
+                    departure=rdep,
+                    arrival=rarr,
                 )
-            ],
+            )
+
+        options.append(
+            FlightOption(
+                id=str(uuid.uuid4()),
+                price=base_prices[i],
+                currency="USD",
+                segments=segments,
+            )
         )
-    ]
+
+    return options
 
