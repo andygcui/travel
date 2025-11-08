@@ -846,7 +846,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Morning</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.morning}</p>
                   {currentWeather?.morning && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
                       <span className="text-lg">{weatherGlyph(currentWeather.morning.summary)}</span>
                       <span>{Math.round(currentWeather.morning.temperature_c)}°C</span>
                       <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
@@ -859,7 +859,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.afternoon}</p>
                   {currentWeather?.afternoon && (
-                    <div className="group relative mt-3 inline-flex items-around gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-3 text-sm text-emerald-700">
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
                       <span className="text-lg">
                         {weatherGlyph(currentWeather.afternoon.summary)}
                       </span>
@@ -874,7 +874,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.evening}</p>
                   {currentWeather?.evening && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-emerald-700">
                       <span className="text-lg">{weatherGlyph(currentWeather.evening.summary)}</span>
                       <span>{Math.round(currentWeather.evening.temperature_c)}°C</span>
                       <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
