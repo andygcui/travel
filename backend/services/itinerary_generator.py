@@ -134,12 +134,13 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     
     # Fetch attractions
     logger.info(f"Fetching attractions for preferences: {request.preferences}")
+    poi_limit = max(6, trip_days * 3)
     attractions = await google_places_service.fetch_attractions_google(
         destination=request.destination,
         latitude=latitude,
         longitude=longitude,
         preferences=request.preferences,
-        limit=5,
+        limit=poi_limit,
     )
     logger.info(f"Found {len(attractions)} attractions")
     
@@ -324,6 +325,11 @@ def _fallback_itinerary(
         pointer += 1
         day_attraction_bundles.append(bundle)
 
+    for itinerary_day, bundle in zip(days, day_attraction_bundles):
+        itinerary_day.morning = _merge_poi_with_text(bundle.morning, itinerary_day.morning)
+        itinerary_day.afternoon = _merge_poi_with_text(bundle.afternoon, itinerary_day.afternoon)
+        itinerary_day.evening = _merge_poi_with_text(bundle.evening, itinerary_day.evening)
+
     return GreenTripItineraryResponse(
         destination=request.destination,
         start_date=start_date,
@@ -414,6 +420,25 @@ def _summarize_flights(flights: List[FlightOption]) -> List[GreenTripFlightOptio
             )
         )
     return summaries
+
+
+def _merge_poi_with_text(poi: Optional[PointOfInterest], text: Optional[str]) -> str:
+    base_text = (text or "").strip()
+    if not poi or not poi.name:
+        return base_text
+
+    poi_name = poi.name.strip()
+    if poi_name.lower() in base_text.lower():
+        return base_text or poi_name
+
+    details: List[str] = []
+    if poi.description:
+        details.append(poi.description.strip())
+    if base_text:
+        details.append(base_text)
+
+    merged = " ".join(details).strip()
+    return f"{poi_name}: {merged}" if merged else poi_name
 
 
 def _fallback_daypart_weather_list(start: date, end: date) -> List[DayWeather]:
