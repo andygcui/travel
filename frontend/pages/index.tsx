@@ -84,26 +84,25 @@ export default function Home() {
       </div>
 
       <header className="relative border-b border-emerald-100 bg-white/75 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-2xl">
-              ✈️
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500">
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-emerald-900 md:text-3xl">
-                GreenTrip Concierge
+              <h1 className="text-xl font-medium tracking-tight text-emerald-900 md:text-2xl">
+                GreenTrip
               </h1>
-              <p className="text-sm text-emerald-600">
+              <p className="text-xs text-emerald-600 md:text-sm">
                 Purposeful journeys, curated with eco-luxury in mind
               </p>
             </div>
           </div>
 
-          <nav className="flex items-center gap-6 text-sm text-emerald-700">
+          <nav className="flex items-center gap-4 text-xs text-emerald-700 md:text-sm">
             <span className="hidden md:inline">Experiences</span>
             <span className="hidden md:inline">Sustainability</span>
             <span className="hidden md:inline">Membership</span>
-            <button className="rounded-full border border-emerald-200 px-5 py-2 font-medium text-emerald-800 transition hover:border-emerald-400 hover:text-emerald-900">
+            <button className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-800 transition hover:border-emerald-400 hover:text-emerald-900">
               Speak with a curator
             </button>
           </nav>
@@ -111,7 +110,7 @@ export default function Home() {
       </header>
 
       <main className="relative mx-auto max-w-6xl px-6 py-16">
-        <section className="grid gap-12 lg:grid-cols-[1.15fr,0.85fr] lg:items-start">
+        <section className="grid gap-12 lg:grid-cols-[0.9fr,1.1fr] lg:items-start">
           <div className="space-y-10">
             <div className="space-y-6">
               <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/70 px-4 py-1 text-sm font-medium text-emerald-700 shadow-sm">
@@ -119,7 +118,7 @@ export default function Home() {
                 Carbon-aware itineraries in seconds
               </span>
 
-              <h2 className="text-4xl font-semibold leading-tight text-emerald-950 md:text-5xl">
+            <h2 className="text-4xl font-medium leading-tight text-emerald-950 md:text-5xl">
                 Discover a smarter way to plan <br className="hidden md:block" />
                 <span className="bg-gradient-to-r from-emerald-500 to-amber-500 bg-clip-text text-transparent">
                   tailor-made, sustainable escapes
@@ -134,7 +133,7 @@ export default function Home() {
 
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
-                Modern concierge intelligence
+                Modern trip intelligence
               </h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 {[
@@ -157,10 +156,10 @@ export default function Home() {
 
           <form
             onSubmit={handleSubmit}
-            className="relative rounded-3xl border border-emerald-100 bg-white/95 p-8 shadow-2xl shadow-emerald-200/40 backdrop-blur"
+            className="relative rounded-[32px] border border-emerald-100 bg-white/95 p-10 shadow-2xl shadow-emerald-200/40 backdrop-blur transition-transform duration-300 ease-out focus-within:scale-[1.04] hover:scale-[1.02]"
           >
             <div className="absolute -top-12 right-6 hidden flex-col items-end rounded-2xl bg-white/90 px-4 py-3 text-right shadow-lg shadow-emerald-100/50 md:flex">
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Concierge note</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Planner note</p>
               <p className="mt-1 text-sm text-emerald-800">
                 Share your dream destination — we handle the rest.
               </p>
@@ -305,7 +304,7 @@ export default function Home() {
                 disabled={loading || !destination}
                 className="group mt-2 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-amber-400 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-emerald-200 transition hover:shadow-xl hover:shadow-emerald-200/70 disabled:cursor-wait disabled:bg-gray-300 disabled:shadow-none"
               >
-                {loading ? "Curating your journey..." : "Design my eco-luxe itinerary"}
+                {loading ? "Crafting your journey..." : "Design my eco-luxe itinerary"}
                 <span className="ml-2 transition group-hover:translate-x-1">↗</span>
               </button>
 
@@ -330,7 +329,7 @@ export default function Home() {
                 We obsess over every detail, so you can simply arrive.
               </h3>
               <p className="max-w-2xl text-emerald-700">
-                From carbon tracking to curated gastronomy, our concierge keeps every detail intentional.
+                From carbon tracking to curated gastronomy, our team keeps every detail intentional.
                 Your itinerary pairs smart data with human taste to feel effortless, indulgent, and grounded.
               </p>
               <div className="flex flex-wrap gap-3 text-sm text-emerald-700">
@@ -348,7 +347,7 @@ export default function Home() {
                   all within our footprint goals. Exceptional.”
                 </p>
                 <footer className="text-sm font-medium text-emerald-600">
-                  — Lia Chen, founder • Verdant Ventures Collective
+                  — Bob Bob, founder • Princeton University
                 </footer>
               </blockquote>
             </div>
