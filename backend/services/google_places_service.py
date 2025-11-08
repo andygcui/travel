@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import httpx
 from dotenv import load_dotenv
 
-from schemas import PointOfInterest
+from schemas import PointOfInterest, POIReview
 
 load_dotenv()
 
@@ -110,11 +110,26 @@ async def fetch_attractions_google(
             if preferences:
                 text_query += f" {', '.join(preferences)} attractions"
 
+            field_mask = ",".join(
+                [
+                    "places.id",
+                    "places.displayName",
+                    "places.primaryType",
+                    "places.location",
+                    "places.formattedAddress",
+                    "places.rating",
+                    "places.userRatingCount",
+                    "places.photos",
+                    "places.editorialSummary",
+                    "places.reviews",
+                ]
+            )
+
             response = await client.post(
                 f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchText",
                 headers={
                     "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
-                    "X-Goog-FieldMask": "places.displayName,places.primaryType,places.location,places.formattedAddress",
+                    "X-Goog-FieldMask": field_mask,
                 },
                 json={
                     "textQuery": text_query,
@@ -123,24 +138,14 @@ async def fetch_attractions_google(
             response.raise_for_status()
             data = response.json()
 
-            for place in data.get("places", [])[:limit]:
-                location = place.get("location", {})
-                pois.append(
-                    PointOfInterest(
-                        name=place.get("displayName", {}).get("text", ""),
-                        category=place.get("primaryType", "attraction"),
-                        description=place.get("formattedAddress", ""),
-                        latitude=location.get("latitude"),
-                        longitude=location.get("longitude"),
-                    )
-                )
+            pois.extend(_parse_places(data.get("places", []), limit))
 
             if latitude and longitude and len(pois) < limit:
                 nearby_response = await client.post(
                     f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchNearby",
                     headers={
                         "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
-                        "X-Goog-FieldMask": "places.displayName,places.primaryType,places.location,places.formattedAddress",
+                        "X-Goog-FieldMask": field_mask,
                     },
                     json={
                         "locationRestriction": {
@@ -156,20 +161,11 @@ async def fetch_attractions_google(
                 nearby_data = nearby_response.json()
 
                 existing_names = {poi.name for poi in pois}
-                for place in nearby_data.get("places", []):
-                    name = place.get("displayName", {}).get("text", "")
-                    if not name or name in existing_names:
+                for poi in _parse_places(nearby_data.get("places", []), limit):
+                    if poi.name in existing_names:
                         continue
-                    location = place.get("location", {})
-                    pois.append(
-                        PointOfInterest(
-                            name=name,
-                            category=place.get("primaryType", "attraction"),
-                            description=place.get("formattedAddress", ""),
-                            latitude=location.get("latitude"),
-                            longitude=location.get("longitude"),
-                        )
-                    )
+                    pois.append(poi)
+                    existing_names.add(poi.name)
                     if len(pois) >= limit:
                         break
 
@@ -193,6 +189,56 @@ def _fallback_pois(destination: str) -> List[PointOfInterest]:
             name=f"{destination} Main Attraction",
             category="attraction",
             description="Popular tourist destination",
+            photo_urls=[],
+            reviews=[],
         )
     ]
+
+
+def _parse_places(places: List[dict], limit: int) -> List[PointOfInterest]:
+    results: List[PointOfInterest] = []
+    if not places:
+        return results
+
+    for place in places[:limit]:
+        location = place.get("location", {})
+        photos = []
+        for photo in (place.get("photos") or [])[:5]:
+            name = photo.get("name")
+            if not name:
+                continue
+            photo_url = (
+                f"https://places.googleapis.com/v1/{name}/media"
+                f"?key={GOOGLE_PLACES_KEY}&maxHeightPx=1000&maxWidthPx=1000"
+            )
+            photos.append(photo_url)
+
+        reviews: List[POIReview] = []
+        for review in (place.get("reviews") or [])[:3]:
+            author_attr = review.get("authorAttribution") or {}
+            text_obj = review.get("text") or {}
+            reviews.append(
+                POIReview(
+                    author=author_attr.get("displayName"),
+                    rating=review.get("rating"),
+                    relative_time_description=review.get("relativePublishTimeDescription"),
+                    text=text_obj.get("text"),
+                )
+            )
+
+        results.append(
+            PointOfInterest(
+                name=place.get("displayName", {}).get("text", ""),
+                category=place.get("primaryType", "attraction"),
+                description=place.get("formattedAddress", "")
+                or (place.get("editorialSummary") or {}).get("text"),
+                latitude=location.get("latitude"),
+                longitude=location.get("longitude"),
+                rating=place.get("rating"),
+                user_ratings_total=place.get("userRatingCount"),
+                photo_urls=photos,
+                reviews=reviews,
+            )
+        )
+    return results
 

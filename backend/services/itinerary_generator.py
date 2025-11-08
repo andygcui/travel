@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import List, Optional, Tuple
 
 from schemas import (
+    DayAttractionBundle,
     DayWeather,
     DaypartWeather,
     DedalusItineraryDay,
@@ -195,7 +196,16 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         logger.error(f"Dedalus API error: {str(e)}")
         logger.warning("Falling back to basic itinerary")
         # Fallback: return a basic itinerary
-        return _fallback_itinerary(normalized_request, flights, hotels, start_date, end_date, weather_daily, daypart_weather)
+        return _fallback_itinerary(
+            normalized_request,
+            flights,
+            hotels,
+            start_date,
+            end_date,
+            weather_daily,
+            daypart_weather,
+            attractions,
+        )
     
     # Step 6: Parse and format response
     days = dedalus_response.get("days", [])
@@ -204,15 +214,34 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     
     # Convert days to DedalusItineraryDay format
     itinerary_days: List[DedalusItineraryDay] = []
+    day_attraction_bundles: List[DayAttractionBundle] = []
+    attraction_pointer = 0
+    attraction_pool = attractions or []
     for day_data in days:
-        itinerary_days.append(
-            DedalusItineraryDay(
-                day=day_data.get("day", len(itinerary_days) + 1),
-                morning=day_data.get("morning", ""),
-                afternoon=day_data.get("afternoon", ""),
-                evening=day_data.get("evening", ""),
-            )
+        day_number = day_data.get("day", len(itinerary_days) + 1)
+        itinerary_day = DedalusItineraryDay(
+            day=day_number,
+            morning=day_data.get("morning", ""),
+            afternoon=day_data.get("afternoon", ""),
+            evening=day_data.get("evening", ""),
         )
+        itinerary_days.append(itinerary_day)
+
+        bundle = DayAttractionBundle(day=day_number)
+        if attraction_pool:
+            bundle.morning = attraction_pool[attraction_pointer % len(attraction_pool)]
+            attraction_pointer += 1
+            if len(attraction_pool) > 1:
+                bundle.afternoon = attraction_pool[attraction_pointer % len(attraction_pool)]
+                attraction_pointer += 1
+            else:
+                bundle.afternoon = bundle.morning
+            if len(attraction_pool) > 2:
+                bundle.evening = attraction_pool[attraction_pointer % len(attraction_pool)]
+                attraction_pointer += 1
+            else:
+                bundle.evening = bundle.afternoon or bundle.morning
+        day_attraction_bundles.append(bundle)
     
     # Calculate eco score (0-100)
     total_emissions = totals.get("emissions_kg", 0)
@@ -239,6 +268,8 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         eco_score=eco_score,
         flights=flight_summaries,
         day_weather=daypart_weather,
+        attractions=attractions,
+        day_attractions=day_attraction_bundles,
     )
 
 
@@ -250,6 +281,7 @@ def _fallback_itinerary(
     end_date: date,
     weather_daily: List[WeatherForecast],
     daypart_weather: List[DayWeather],
+    attractions: List[PointOfInterest],
 ) -> GreenTripItineraryResponse:
     """Fallback itinerary when Dedalus is unavailable"""
     days = []
@@ -271,6 +303,25 @@ def _fallback_itinerary(
         (hotels[0].emissions_kg * nights) if hotels and hotels[0].emissions_kg else 15 * nights
     )
     
+    day_attraction_bundles: List[DayAttractionBundle] = []
+    attraction_pool = attractions if attractions else [
+        PointOfInterest(
+            name=f"{request.destination} Highlight",
+            category="attraction",
+            description=f"Must-see spot in {request.destination}",
+        )
+    ]
+    pointer = 0
+    for day in days:
+        bundle = DayAttractionBundle(day=day.day)
+        bundle.morning = attraction_pool[pointer % len(attraction_pool)]
+        pointer += 1
+        bundle.afternoon = attraction_pool[pointer % len(attraction_pool)]
+        pointer += 1
+        bundle.evening = attraction_pool[pointer % len(attraction_pool)]
+        pointer += 1
+        day_attraction_bundles.append(bundle)
+
     return GreenTripItineraryResponse(
         destination=request.destination,
         start_date=start_date,
@@ -284,6 +335,8 @@ def _fallback_itinerary(
         eco_score=max(0, 100 - (total_emissions / 10)),
         flights=_summarize_flights(flights),
         day_weather=daypart_weather or _fallback_daypart_weather_list(start_date, end_date),
+        attractions=attractions if attractions else attraction_pool,
+        day_attractions=day_attraction_bundles,
     )
 
 

@@ -56,6 +56,32 @@ interface DayWeather {
   evening: DaypartWeather;
 }
 
+interface POIReview {
+  author?: string;
+  rating?: number;
+  relative_time_description?: string;
+  text?: string;
+}
+
+interface PointOfInterest {
+  name: string;
+  category: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  rating?: number;
+  user_ratings_total?: number;
+  photo_urls?: string[];
+  reviews?: POIReview[];
+}
+
+interface DayAttractionBundle {
+  day: number;
+  morning?: PointOfInterest;
+  afternoon?: PointOfInterest;
+  evening?: PointOfInterest;
+}
+
 interface ItineraryResponse {
   destination: string;
   start_date?: string;
@@ -72,6 +98,98 @@ interface ItineraryResponse {
   eco_score?: number;
   flights?: FlightOption[];
   day_weather?: DayWeather[];
+  attractions?: PointOfInterest[];
+  day_attractions?: DayAttractionBundle[];
+}
+
+function PhotoCarousel({ photos, alt }: { photos: string[]; alt: string }) {
+  const [index, setIndex] = useState(0);
+
+  if (!photos || photos.length === 0) {
+    return null;
+  }
+
+  const prev = () => setIndex((prevIndex) => (prevIndex - 1 + photos.length) % photos.length);
+  const next = () => setIndex((prevIndex) => (prevIndex + 1) % photos.length);
+
+  return (
+    <div className="group relative mt-4 overflow-hidden rounded-2xl border border-emerald-100 bg-white/80 shadow-inner shadow-emerald-200/40">
+      <img
+        src={photos[index]}
+        alt={alt}
+        className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+        loading="lazy"
+      />
+      {photos.length > 1 && (
+        <>
+          <button
+            onClick={prev}
+            className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 px-3 py-2 text-sm text-emerald-700 shadow-md transition hover:bg-white"
+            aria-label="Previous photo"
+          >
+            ‹
+          </button>
+          <button
+            onClick={next}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 px-3 py-2 text-sm text-emerald-700 shadow-md transition hover:bg-white"
+            aria-label="Next photo"
+          >
+            ›
+          </button>
+        </>
+      )}
+      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1">
+        {photos.map((_, dotIndex) => (
+          <span
+            key={dotIndex}
+            className={`h-2 w-2 rounded-full ${
+              dotIndex === index ? "bg-emerald-500" : "bg-emerald-200"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function POIReviews({ poi }: { poi: PointOfInterest }) {
+  if (!poi) return null;
+
+  const { reviews, rating, user_ratings_total } = poi;
+
+  if ((!reviews || reviews.length === 0) && !rating) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 space-y-3 rounded-2xl border border-emerald-100 bg-white/80 p-4 shadow-inner shadow-emerald-200/30">
+      <div className="flex items-center justify-between text-xs text-emerald-700">
+        <span className="font-semibold">
+          {poi.name} {rating ? `• ${rating.toFixed(1)}★` : ""}
+        </span>
+        {user_ratings_total !== undefined && (
+          <span>{user_ratings_total.toLocaleString()} reviews</span>
+        )}
+      </div>
+      {reviews &&
+        reviews.slice(0, 2).map((review, idx) => (
+          <div key={idx} className="rounded-xl border border-emerald-50 bg-emerald-50/50 p-3 text-xs text-emerald-800">
+            <div className="flex items-center justify-between font-semibold">
+              <span>{review.author || "Traveler"}</span>
+              {typeof review.rating === "number" && (
+                <span className="text-emerald-600">{review.rating.toFixed(1)}★</span>
+              )}
+            </div>
+            {review.text && <p className="mt-2 leading-relaxed">{review.text}</p>}
+            {review.relative_time_description && (
+              <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-emerald-500">
+                {review.relative_time_description}
+              </p>
+            )}
+          </div>
+        ))}
+    </div>
+  );
 }
 
 // Extract place names from text descriptions
@@ -276,6 +394,7 @@ export default function Results() {
 
   const currentDay = itinerary.days[currentDayIndex];
   const currentWeather = itinerary.day_weather?.[currentDayIndex];
+  const dayBundle = itinerary.day_attractions?.find((bundle) => bundle.day === currentDay.day);
   const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
   const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
 
@@ -570,6 +689,24 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       </div>
                     </div>
                   )}
+                  {dayBundle?.morning && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-900">
+                          {dayBundle.morning.name}
+                        </p>
+                        {dayBundle.morning.description && (
+                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.morning.description}</p>
+                        )}
+                      </div>
+                      <PhotoCarousel
+                        photos={dayBundle.morning.photo_urls ?? []}
+                        alt={dayBundle.morning.name}
+                      />
+                      <POIReviews poi={dayBundle.morning} />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
@@ -585,6 +722,24 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       </div>
                     </div>
                   )}
+                  {dayBundle?.afternoon && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-900">
+                          {dayBundle.afternoon.name}
+                        </p>
+                        {dayBundle.afternoon.description && (
+                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.afternoon.description}</p>
+                        )}
+                      </div>
+                      <PhotoCarousel
+                        photos={dayBundle.afternoon.photo_urls ?? []}
+                        alt={dayBundle.afternoon.name}
+                      />
+                      <POIReviews poi={dayBundle.afternoon} />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
@@ -596,6 +751,24 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       <div className="pointer-events-none absolute bottom-full left-1/2 hidden -translate-x-1/2 -translate-y-2 whitespace-nowrap rounded-md bg-emerald-900 px-3 py-2 text-xs text-white shadow-lg group-hover:flex">
                         {buildWeatherTooltip(currentWeather.evening)}
                       </div>
+                    </div>
+                  )}
+                  {dayBundle?.evening && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-900">
+                          {dayBundle.evening.name}
+                        </p>
+                        {dayBundle.evening.description && (
+                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.evening.description}</p>
+                        )}
+                      </div>
+                      <PhotoCarousel
+                        photos={dayBundle.evening.photo_urls ?? []}
+                        alt={dayBundle.evening.name}
+                      />
+                      <POIReviews poi={dayBundle.evening} />
                     </div>
                   )}
                 </div>

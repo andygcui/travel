@@ -130,6 +130,19 @@ class PointOfInterest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     entrance_fee: Optional[float] = None
+    rating: Optional[float] = Field(default=None, description="Average Google rating 1-5")
+    user_ratings_total: Optional[int] = Field(
+        default=None, description="Total number of Google reviews"
+    )
+    photo_urls: List[str] = Field(default_factory=list, description="Photo URLs from Google Places")
+    reviews: List["POIReview"] = Field(default_factory=list, description="Highlighted visitor reviews")
+
+
+class POIReview(BaseModel):
+    author: Optional[str] = None
+    rating: Optional[float] = None
+    relative_time_description: Optional[str] = None
+    text: Optional[str] = None
 
 
 class HealthAdvisory(BaseModel):
@@ -159,6 +172,13 @@ class DedalusItineraryDay(BaseModel):
     morning: str
     afternoon: str
     evening: str
+
+
+class DayAttractionBundle(BaseModel):
+    day: int
+    morning: Optional[PointOfInterest] = None
+    afternoon: Optional[PointOfInterest] = None
+    evening: Optional[PointOfInterest] = None
 
 
 class DedalusItineraryResponse(BaseModel):
@@ -240,4 +260,11 @@ class GreenTripItineraryResponse(BaseModel):
     eco_score: Optional[float] = Field(default=None, description="0-100 sustainability score")
     flights: List[GreenTripFlightOption] = Field(default_factory=list, description="Flight summaries for display")
     day_weather: List[DayWeather] = Field(default_factory=list, description="Weather snapshots for each day")
+    attractions: List[PointOfInterest] = Field(
+        default_factory=list, description="Curated attractions with imagery and reviews"
+    )
+    day_attractions: List[DayAttractionBundle] = Field(
+        default_factory=list,
+        description="Mapped attractions for each itinerary period (morning/afternoon/evening)",
+    )
 
