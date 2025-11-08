@@ -501,13 +501,24 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-950">
       <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500" />
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">TripSmith • Results</p>
-              <h1 className="text-xl font-medium text-emerald-900 md:text-2xl">GreenTrip Journey Report</h1>
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="group flex items-center gap-3 rounded-xl p-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            aria-label="Back to planner"
+          >
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 transition duration-300 group-hover:scale-105 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+            />
+            <div className="text-left">
+              <p className="text-xs uppercase tracking-[0.3em] text-emerald-500 transition group-hover:text-emerald-600">
+                TripSmith • Results
+              </p>
+              <h1 className="text-xl font-medium text-emerald-900 transition group-hover:text-emerald-800 md:text-2xl">
+                GreenTrip Journey Report
+              </h1>
             </div>
-          </div>
+          </button>
           <div className="flex items-center gap-3 text-sm text-emerald-700">
             {user && (
               <button
