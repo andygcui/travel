@@ -23,6 +23,17 @@ ChartJS.register(
   Legend
 );
 
+type SlotKey = "morning" | "afternoon" | "evening";
+
+interface SlotShowcase {
+  name: string;
+  description: string;
+  photos: string[];
+  reviews: POIReview[];
+  rating?: number;
+  user_ratings_total?: number;
+}
+
 interface ItineraryDay {
   day: number;
   morning: string;
@@ -399,6 +410,94 @@ export default function Results() {
     return Array.from(unique.values());
   }, [itinerary]);
 
+const attractionSlots: Record<SlotKey, SlotShowcase> = useMemo(() => {
+  const base: Record<SlotKey, SlotShowcase> = {
+    morning: {
+      name: "Morning highlight",
+      description: "",
+      photos: [],
+      reviews: [],
+    },
+    afternoon: {
+      name: "Afternoon highlight",
+      description: "",
+      photos: [],
+      reviews: [],
+    },
+    evening: {
+      name: "Evening highlight",
+      description: "",
+      photos: [],
+      reviews: [],
+    },
+  };
+
+  if (!itinerary || !itinerary.days || itinerary.days.length === 0) {
+    return base;
+  }
+
+  const safeIndex = Math.min(currentDayIndex, itinerary.days.length - 1);
+  const day = itinerary.days[safeIndex];
+  const bundle = itinerary.day_attractions?.find((item) => item.day === day.day);
+
+  base.morning.description = day.morning;
+  base.afternoon.description = day.afternoon;
+  base.evening.description = day.evening;
+
+  const poiCandidates: PointOfInterest[] = [];
+  if (bundle?.morning) poiCandidates.push(bundle.morning);
+  if (bundle?.afternoon) poiCandidates.push(bundle.afternoon);
+  if (bundle?.evening) poiCandidates.push(bundle.evening);
+  if (itinerary.attractions) {
+    poiCandidates.push(...itinerary.attractions);
+  }
+
+  (["morning", "afternoon", "evening"] as SlotKey[]).forEach((slot) => {
+    const text = day[slot];
+    const namesFromText = extractPlaceNames(text);
+
+    let matched: PointOfInterest | undefined = bundle?.[slot] ?? undefined;
+
+    if (!matched && namesFromText.length > 0) {
+      const targetName = namesFromText[0].toLowerCase();
+      matched = poiCandidates.find((poi) => poi.name?.toLowerCase().includes(targetName));
+    }
+
+    if (!matched) {
+      matched = poiCandidates.find((poi) =>
+        text.toLowerCase().includes((poi.name ?? "").toLowerCase())
+      );
+    }
+
+    if (matched) {
+      base[slot] = {
+        name: matched.name || namesFromText[0] || `${slot} experience`,
+        description: text,
+        photos: matched.photo_urls ?? [],
+        reviews: matched.reviews ?? [],
+        rating: matched.rating ?? undefined,
+        user_ratings_total: matched.user_ratings_total ?? undefined,
+      };
+    } else if (namesFromText.length > 0) {
+      base[slot] = {
+        name: namesFromText[0],
+        description: text,
+        photos: [],
+        reviews: [],
+      };
+    } else {
+      base[slot] = {
+        name: `${slot} experience`,
+        description: text,
+        photos: [],
+        reviews: [],
+      };
+    }
+  });
+
+  return base;
+}, [currentDayIndex, itinerary]);
+
   // MOVED: Early return check moved to JSX render instead
   // All hooks must be called before any conditional returns
   if (!itinerary) {
@@ -536,12 +635,12 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
         </div>
       </header>
 
-      <main className={`mx-auto px-6 py-10 transition-all ${
-        showChat 
-          ? "max-w-[calc(100%-24rem)] min-w-0" 
-          : "max-w-6xl"
-      }`}>
-        <section className="grid gap-10 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
+      <main
+        className={`mx-auto px-6 py-10 transition-all ${
+          showChat ? "max-w-[calc(100%-24rem)] min-w-0" : "max-w-6xl"
+        }`}
+      >
+        <section className="grid gap-10">
           <div className="space-y-6">
             <div className="rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-xl shadow-emerald-200/50">
               <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Your itinerary</p>
@@ -555,7 +654,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                   </p>
                 </div>
                 <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-medium text-emerald-700">
-                  Budget: {currency.format(itinerary.budget)}
+              Budget: {currency.format(itinerary.budget)}
                 </div>
               </div>
             </div>
@@ -653,31 +752,31 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
               <div className="rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
                 <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Estimated CO₂</p>
                 <p className="mt-3 text-3xl font-medium text-orange-600">
-                  {itinerary.totals.emissions_kg.toFixed(1)} kg
-                </p>
+              {itinerary.totals.emissions_kg.toFixed(1)} kg
+            </p>
                 <p className="mt-2 text-xs text-emerald-600">Offset options available via Climatiq partners.</p>
-              </div>
-            </div>
+          </div>
+        </div>
 
             <div className="rounded-3xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
               <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
                 Footprint overview
               </h3>
               <div className="mt-4">
-                <Bar
-                  data={comparisonData}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: { display: false },
-                      title: { display: false },
-                    },
-                    scales: {
-                      y: { beginAtZero: true },
-                    },
-                  }}
-                />
-              </div>
+            <Bar
+              data={comparisonData}
+              options={{
+                responsive: true,
+                plugins: {
+                  legend: { display: false },
+                  title: { display: false },
+                },
+                scales: {
+                  y: { beginAtZero: true },
+                },
+              }}
+            />
+          </div>
             </div>
 
             <div className="rounded-3xl border border-emerald-100 bg-white/95 p-6 shadow-lg shadow-emerald-200/40">
@@ -716,7 +815,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
               <h4 className="mt-1 text-lg font-medium text-emerald-900">
                 Day {currentDay.day} of {itinerary.days.length}
               </h4>
-            </div>
+        </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={goPrevDay}
@@ -739,7 +838,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
           <div className="mt-6 space-y-4">
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-sm shadow-emerald-200/30">
               <div className="grid gap-6 md:grid-cols-3">
-                <div>
+                  <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Morning</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.morning}</p>
                   {currentWeather?.morning && (
@@ -751,30 +850,12 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       </div>
                     </div>
                   )}
-                  {dayBundle?.morning && (
-                    <div className="mt-4 space-y-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
-                        <p className="mt-1 text-sm font-semibold text-emerald-900">
-                          {dayBundle.morning.name}
-                        </p>
-                        {dayBundle.morning.description && (
-                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.morning.description}</p>
-                        )}
-                      </div>
-                      <PhotoCarousel
-                        photos={dayBundle.morning.photo_urls ?? []}
-                        alt={dayBundle.morning.name}
-                      />
-                      <POIReviews poi={dayBundle.morning} />
-                    </div>
-                  )}
-                </div>
-                <div>
+                  </div>
+                  <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Afternoon</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.afternoon}</p>
                   {currentWeather?.afternoon && (
-                    <div className="group relative mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-sm text-emerald-700">
+                    <div className="group relative mt-3 inline-flex items-around gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-3 text-sm text-emerald-700">
                       <span className="text-lg">
                         {weatherGlyph(currentWeather.afternoon.summary)}
                       </span>
@@ -784,26 +865,8 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       </div>
                     </div>
                   )}
-                  {dayBundle?.afternoon && (
-                    <div className="mt-4 space-y-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
-                        <p className="mt-1 text-sm font-semibold text-emerald-900">
-                          {dayBundle.afternoon.name}
-                        </p>
-                        {dayBundle.afternoon.description && (
-                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.afternoon.description}</p>
-                        )}
-                      </div>
-                      <PhotoCarousel
-                        photos={dayBundle.afternoon.photo_urls ?? []}
-                        alt={dayBundle.afternoon.name}
-                      />
-                      <POIReviews poi={dayBundle.afternoon} />
-                    </div>
-                  )}
-                </div>
-                <div>
+                  </div>
+                  <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">Evening</p>
                   <p className="mt-2 text-sm text-emerald-800">{currentDay.evening}</p>
                   {currentWeather?.evening && (
@@ -815,26 +878,56 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
                       </div>
                     </div>
                   )}
-                  {dayBundle?.evening && (
-                    <div className="mt-4 space-y-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Spotlight</p>
-                        <p className="mt-1 text-sm font-semibold text-emerald-900">
-                          {dayBundle.evening.name}
-                        </p>
-                        {dayBundle.evening.description && (
-                          <p className="mt-1 text-xs text-emerald-600">{dayBundle.evening.description}</p>
-                        )}
-                      </div>
-                      <PhotoCarousel
-                        photos={dayBundle.evening.photo_urls ?? []}
-                        alt={dayBundle.evening.name}
-                      />
-                      <POIReviews poi={dayBundle.evening} />
-                    </div>
-                  )}
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-12 space-y-6">
+          <div className="rounded-[32px] border border-emerald-100 bg-white/95 p-8 shadow-2xl shadow-emerald-200/50">
+            <h3 className="mb-6 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
+              Explore more options
+            </h3>
+            <div className="grid gap-6 md:grid-cols-3">
+              {(["morning", "afternoon", "evening"] as SlotKey[]).map((slot) => {
+                const showcase = attractionSlots[slot];
+                const reviewCount = showcase.reviews.length;
+                const averageRating =
+                  showcase.rating ??
+                  (reviewCount
+                    ? showcase.reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount
+                    : undefined);
+
+                return (
+                  <div
+                    key={slot}
+                    className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-6"
+                  >
+                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-emerald-500">
+                      <span>{showcase.name}</span>
+                    </div>
+                    {showcase.photos.length > 0 ? (
+                      <PhotoCarousel photos={showcase.photos} alt={showcase.name} />
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs text-emerald-600">
+                        Add this location to your shortlist to unlock photo previews.
+                      </div>
+                    )}
+                    <POIReviews
+                      poi={{
+                        name: showcase.name,
+                        category: "attraction",
+                        description: showcase.description,
+                        reviews: showcase.reviews,
+                        rating: averageRating,
+                        user_ratings_total:
+                          showcase.user_ratings_total ?? (reviewCount > 0 ? reviewCount : undefined),
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
