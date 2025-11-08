@@ -349,11 +349,55 @@ export default function Results() {
 
   // Transform itinerary data into map-friendly format
   // MOVED: This hook must be called before any early returns
+  // PRIORITY: Use structured day_attractions from backend if available, otherwise parse text
   const attractions = useMemo(() => {
     if (!itinerary?.days) return [];
     
     const out: { name: string; day: number; lat?: number; lng?: number; when?: string }[] = [];
     
+    // FIRST: Try to use structured day_attractions from backend (has lat/lng)
+    if (itinerary.day_attractions && itinerary.day_attractions.length > 0) {
+      console.log("Using structured day_attractions from backend:", itinerary.day_attractions);
+      for (const bundle of itinerary.day_attractions) {
+        if (bundle.morning && bundle.morning.latitude && bundle.morning.longitude) {
+          out.push({
+            name: bundle.morning.name,
+            day: bundle.day,
+            lat: bundle.morning.latitude,
+            lng: bundle.morning.longitude,
+            when: "morning",
+          });
+        }
+        if (bundle.afternoon && bundle.afternoon.latitude && bundle.afternoon.longitude) {
+          out.push({
+            name: bundle.afternoon.name,
+            day: bundle.day,
+            lat: bundle.afternoon.latitude,
+            lng: bundle.afternoon.longitude,
+            when: "afternoon",
+          });
+        }
+        if (bundle.evening && bundle.evening.latitude && bundle.evening.longitude) {
+          out.push({
+            name: bundle.evening.name,
+            day: bundle.day,
+            lat: bundle.evening.latitude,
+            lng: bundle.evening.longitude,
+            when: "evening",
+          });
+        }
+      }
+      
+      // If we got structured data, return it
+      if (out.length > 0) {
+        console.log(`Found ${out.length} attractions with coordinates from day_attractions`);
+        return out;
+      }
+    } else {
+      console.log("No day_attractions found, falling back to text parsing");
+    }
+    
+    // FALLBACK: Parse text descriptions to extract place names
     for (const day of itinerary.days) {
       // Extract places from morning text
       const morningPlaces = extractPlaceNames(day.morning);
