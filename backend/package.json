@@ -4,6 +4,8 @@
   "description": "TripSmith AI Backend",
   "scripts": {
     "start": ".venv/bin/uvicorn app:app --reload"
+  },
+  "dependencies": {
+    "@react-google-maps/api": "^2.20.7"
   }
 }
-
