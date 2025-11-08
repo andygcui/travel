@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import { Bar } from "react-chartjs-2";
 import { supabase } from "../lib/supabase";
 import ChatPlanner from "../components/ChatPlanner";
+import ItineraryMap from "../components/ItineraryMap";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -72,6 +73,50 @@ interface ItineraryResponse {
   flights?: FlightOption[];
   day_weather?: DayWeather[];
 }
+
+// Extract place names from text descriptions
+// MOVED: This function must be defined before the component to be used in useMemo
+const extractPlaceNames = (text: string): string[] => {
+  if (!text) return [];
+  
+  // Common patterns for place names in itinerary text:
+  // - "Visit [Place Name]"
+  // - "[Place Name] (optional description)"
+  // - "[Place Name], [description]"
+  // - Capitalized phrases that might be place names
+  
+  const placeNames: string[] = [];
+  
+  // Pattern 1: "Visit [Place]" or "Explore [Place]"
+  const visitPattern = /(?:visit|explore|see|tour|experience|discover|check out|head to|go to|stop at)\s+([A-Z][A-Za-z\s&'-]+?)(?:\.|,|$|and|or|for|with|to|at)/gi;
+  let match;
+  while ((match = visitPattern.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (name.length > 3 && name.length < 50) {
+      placeNames.push(name);
+    }
+  }
+  
+  // Pattern 2: Standalone capitalized phrases (likely place names)
+  const capitalizedPattern = /\b([A-Z][A-Za-z\s&'-]{2,30})\b/g;
+  const seen = new Set(placeNames);
+  while ((match = capitalizedPattern.exec(text)) !== null) {
+    const name = match[1].trim();
+    // Skip common words and short phrases
+    if (
+      name.length > 3 &&
+      name.length < 50 &&
+      !seen.has(name) &&
+      !/^(The|A|An|And|Or|But|For|With|From|To|At|In|On|Of|By|This|That|These|Those|You|Your|We|Our|Their|His|Her|Its)$/i.test(name)
+    ) {
+      placeNames.push(name);
+      seen.add(name);
+    }
+  }
+  
+  // Remove duplicates and return
+  return Array.from(new Set(placeNames)).filter((n) => n.length > 3);
+};
 
 export default function Results() {
   const router = useRouter();
@@ -184,6 +229,47 @@ export default function Results() {
     setCurrentDayIndex(0);
   };
 
+  // Transform itinerary data into map-friendly format
+  // MOVED: This hook must be called before any early returns
+  const attractions = useMemo(() => {
+    if (!itinerary?.days) return [];
+    
+    const out: { name: string; day: number; lat?: number; lng?: number; when?: string }[] = [];
+    
+    for (const day of itinerary.days) {
+      // Extract places from morning text
+      const morningPlaces = extractPlaceNames(day.morning);
+      morningPlaces.forEach((name) => {
+        out.push({ name, day: day.day, when: "morning" });
+      });
+      
+      // Extract places from afternoon text
+      const afternoonPlaces = extractPlaceNames(day.afternoon);
+      afternoonPlaces.forEach((name) => {
+        out.push({ name, day: day.day, when: "afternoon" });
+      });
+      
+      // Extract places from evening text
+      const eveningPlaces = extractPlaceNames(day.evening);
+      eveningPlaces.forEach((name) => {
+        out.push({ name, day: day.day, when: "evening" });
+      });
+    }
+    
+    // Remove duplicates (same name on same day)
+    const unique = new Map<string, typeof out[0]>();
+    out.forEach((attraction) => {
+      const key = `${attraction.name}-${attraction.day}`;
+      if (!unique.has(key)) {
+        unique.set(key, attraction);
+      }
+    });
+    
+    return Array.from(unique.values());
+  }, [itinerary]);
+
+  // MOVED: Early return check moved to JSX render instead
+  // All hooks must be called before any conditional returns
   if (!itinerary) {
     return <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-amber-100 text-emerald-900">Loading your journey...</div>;
   }
@@ -234,7 +320,7 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
   )}% chance of precipitation`;
 };
 
-
+  // MOVED: comparisonData computed after early return check (not a hook, so safe)
   const comparisonData = {
     labels: ["Cost (x100)", "Emissions (kg CO₂)", "Eco Score"],
     datasets: [
@@ -428,16 +514,20 @@ const buildWeatherTooltip = (weather?: DaypartWeather) => {
           </h3>
           <div className="mb-6 rounded-2xl border border-emerald-100 bg-white/95 p-6 shadow-md shadow-emerald-200/40">
             <h4 className="text-xs uppercase tracking-[0.3em] text-emerald-500 mb-3">
-              Map preview
+              Interactive Map
             </h4>
-            <div className="flex h-72 w-full items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50/80 text-sm text-emerald-600">
-              <div className="text-center">
-                <p className="font-medium text-emerald-700">Interactive map placeholder</p>
-                <p className="mt-2 text-xs text-emerald-500">
-                  A Mapbox embed will showcase flight paths and key points of interest here.
-                </p>
+            {attractions.length > 0 ? (
+              <ItineraryMap destination={itinerary.destination} attractions={attractions} />
+            ) : (
+              <div className="flex h-[500px] w-full items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50/80 text-sm text-emerald-600">
+                <div className="text-center">
+                  <p className="font-medium text-emerald-700">No attractions found</p>
+                  <p className="mt-2 text-xs text-emerald-500">
+                    The itinerary will be displayed on the map once place names are detected.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
