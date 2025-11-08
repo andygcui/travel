@@ -39,6 +39,7 @@ class TripPlanRequest(BaseModel):
 class ItineraryGenerationRequest(BaseModel):
     """GreenTrip-specific request for /generate_itinerary endpoint"""
     destination: str
+    origin: Optional[str] = Field(default=None, description="Origin city or airport code (e.g. 'New York' or 'JFK')")
     num_days: int = Field(gt=0, le=30, description="Number of days for the trip")
     budget: float = Field(gt=0, description="Total budget in USD")
     preferences: List[str] = Field(default_factory=list, description="e.g. food, art, outdoors")

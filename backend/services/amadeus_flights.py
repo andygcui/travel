@@ -1,6 +1,7 @@
 """Amadeus API client for flight search"""
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta
@@ -13,6 +14,7 @@ from schemas import FlightOption, FlightSegment
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 AMADEUS_BASE_URL = os.getenv("AMADEUS_BASE_URL", "https://test.api.amadeus.com")
@@ -49,10 +51,20 @@ async def fetch_flights_amadeus(
     """
     Fetch flight options from Amadeus API.
     Returns top 3-5 flight options.
+    Note: origin and destination should be IATA airport codes (e.g., "JFK", "CDG")
     """
+    logger.info(f"Fetching Amadeus flights: {origin} -> {destination} on {departure_date}")
+    
+    if not AMADEUS_API_KEY or not AMADEUS_API_SECRET:
+        logger.warning("Amadeus API keys not set, using fallback data")
+        return _fallback_flights(origin, destination, departure_date)
+    
     token = await get_amadeus_token()
     if not token:
+        logger.warning("Failed to get Amadeus token, using fallback data")
         return _fallback_flights(origin, destination, departure_date)
+    
+    logger.info("Got Amadeus token, fetching flights...")
     
     headers = {"Authorization": f"Bearer {token}"}
     params = {
@@ -107,8 +119,10 @@ async def fetch_flights_amadeus(
                     )
                 )
             
+            logger.info(f"Amadeus returned {len(flights)} flights")
             return flights if flights else _fallback_flights(origin, destination, departure_date)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Amadeus API error: {str(e)}, using fallback")
             return _fallback_flights(origin, destination, departure_date)
 
 

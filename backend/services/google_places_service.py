@@ -1,6 +1,7 @@
 """Google Places API client for attractions and geocoding"""
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Optional, Tuple
 
@@ -11,6 +12,7 @@ from schemas import PointOfInterest
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY")
 GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api"
 
@@ -21,7 +23,10 @@ async def geocode_destination(destination: str) -> Tuple[Optional[float], Option
     Returns (latitude, longitude).
     """
     if not GOOGLE_PLACES_KEY:
+        logger.warning("GOOGLE_PLACES_KEY not set, cannot geocode")
         return None, None
+    
+    logger.info(f"Geocoding '{destination}' with Google Places API...")
     
     params = {
         "query": destination,
@@ -39,10 +44,13 @@ async def geocode_destination(destination: str) -> Tuple[Optional[float], Option
             
             if data.get("results") and len(data["results"]) > 0:
                 location = data["results"][0].get("geometry", {}).get("location", {})
-                return location.get("lat"), location.get("lng")
-        except Exception:
-            pass
+                lat, lng = location.get("lat"), location.get("lng")
+                logger.info(f"Geocoded '{destination}' to ({lat}, {lng})")
+                return lat, lng
+        except Exception as e:
+            logger.error(f"Google Places geocoding error: {str(e)}")
     
+    logger.warning(f"Could not geocode '{destination}'")
     return None, None
 
 

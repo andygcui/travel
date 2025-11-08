@@ -24,6 +24,7 @@ interface ItineraryResponse {
 
 export default function Home() {
   const router = useRouter();
+  const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [numDays, setNumDays] = useState(5);
   const [budget, setBudget] = useState(2000);
@@ -51,6 +52,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination,
+          origin: origin || undefined,
           num_days: numDays,
           budget,
           preferences,
@@ -102,18 +104,33 @@ export default function Home() {
           className="rounded-2xl border border-green-200 bg-white p-8 shadow-xl"
         >
           <div className="grid gap-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Destination
-              </label>
-              <input
-                type="text"
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                placeholder="e.g. Paris, France"
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-green-500"
-                required
-              />
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Traveling From
+                </label>
+                <input
+                  type="text"
+                  value={origin}
+                  onChange={(e) => setOrigin(e.target.value)}
+                  placeholder="e.g. New York or JFK"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-green-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Leave empty to use default (New York)</p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Destination
+                </label>
+                <input
+                  type="text"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  placeholder="e.g. Paris, France"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 outline-none focus:border-green-500"
+                  required
+                />
+              </div>
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">

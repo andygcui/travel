@@ -68,11 +68,12 @@ export default function Results() {
 
     setRegenerating(true);
     try {
-      const response = await fetch("http://localhost:3000/generate_itinerary", {
+      const response = await fetch("http://localhost:8000/generate_itinerary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination: itinerary.destination,
+          origin: (itinerary as any).origin || undefined, // Preserve origin if available
           num_days: itinerary.num_days,
           budget: itinerary.budget,
           preferences: [], // Could extract from original request
