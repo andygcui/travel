@@ -45,6 +45,9 @@ class ItineraryGenerationRequest(BaseModel):
     num_days: Optional[int] = Field(default=None, gt=0, le=45, description="Number of days for the trip")
     budget: float = Field(gt=0, description="Total budget in USD")
     preferences: List[str] = Field(default_factory=list, description="e.g. food, art, outdoors")
+    likes: Optional[List[str]] = Field(default_factory=list, description="Things the user likes (e.g. museums, hiking)")
+    dislikes: Optional[List[str]] = Field(default_factory=list, description="Things the user dislikes (e.g. crowds, nightlife)")
+    dietary_restrictions: Optional[List[str]] = Field(default_factory=list, description="Dietary restrictions (e.g. vegetarian, vegan)")
     mode: str = Field(default="balanced", description="price-optimal or balanced")
 
 

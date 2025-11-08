@@ -1,7 +1,7 @@
 """Build prompts for Dedalus API to generate optimized travel itineraries"""
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from schemas import FlightOption, LodgingOption, PointOfInterest, WeatherForecast
 
@@ -16,6 +16,9 @@ def build_dedalus_prompt(
     hotels: List[LodgingOption],
     attractions: List[PointOfInterest],
     weather: List[WeatherForecast],
+    likes: Optional[List[str]] = None,
+    dislikes: Optional[List[str]] = None,
+    dietary_restrictions: Optional[List[str]] = None,
 ) -> str:
     """
     Build a comprehensive prompt for Dedalus API.
@@ -63,6 +66,19 @@ def build_dedalus_prompt(
         for w in weather
     ])
     
+    # Build user preferences section
+    prefs_section = []
+    if preferences:
+        prefs_section.append(f"Activity interests: {', '.join(preferences)}")
+    if likes:
+        prefs_section.append(f"Likes: {', '.join(likes)}")
+    if dislikes:
+        prefs_section.append(f"Dislikes: {', '.join(dislikes)}")
+    if dietary_restrictions:
+        prefs_section.append(f"Dietary restrictions: {', '.join(dietary_restrictions)}")
+    
+    preferences_text = "\n".join(prefs_section) if prefs_section else "No specific preferences"
+    
     prompt = f"""You are an AI travel planner for GreenTrip, an eco-friendly travel planning service.
 
 TASK: Generate an optimized {num_days}-day travel itinerary for {destination} with a budget of ${budget:.2f}.
@@ -72,7 +88,8 @@ MODE: {mode.upper()}
 - Emissions weight (β): {beta}
 - Preference weight (γ): {gamma}
 
-PREFERENCES: {', '.join(preferences) if preferences else 'No specific preferences'}
+USER PREFERENCES:
+{preferences_text}
 
 AVAILABLE DATA:
 

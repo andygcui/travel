@@ -180,6 +180,9 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         hotels=hotels,
         attractions=attractions,
         weather=weather_daily,
+        likes=request.likes or [],
+        dislikes=request.dislikes or [],
+        dietary_restrictions=request.dietary_restrictions or [],
     )
     
     # Call Dedalus

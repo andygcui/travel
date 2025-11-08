@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import { supabase } from "../lib/supabase";
+import AuthModal from "../components/AuthModal";
 
 export default function Home() {
   const router = useRouter();
@@ -11,10 +13,16 @@ export default function Home() {
   const [numDays, setNumDays] = useState(5);
   const [budget, setBudget] = useState(2000);
   const [preferences, setPreferences] = useState<string[]>([]);
+  const [likes, setLikes] = useState<string[]>([]);
+  const [dislikes, setDislikes] = useState<string[]>([]);
+  const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
   const [mode, setMode] = useState<"price-optimal" | "balanced">("balanced");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isScrolled, setIsScrolled] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
 
   const preferenceOptions = [
     "Food",
@@ -26,6 +34,8 @@ export default function Home() {
     "Shopping",
     "Adventure",
   ];
+
+  const dietaryOptions = ["vegetarian", "vegan", "gluten-free", "dairy-free", "halal", "kosher", "pescatarian"];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -46,10 +56,104 @@ export default function Home() {
     }
   }, [startDate, endDate]);
 
+  // Check for authenticated user and load preferences
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserPreferences(session.user.id);
+      }
+    });
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserPreferences(session.user.id);
+      } else {
+        setLikes([]);
+        setDislikes([]);
+        setDietaryRestrictions([]);
+        setPreferences([]);
+      }
+    });
+  }, []);
+
+  const loadUserPreferences = async (userId: string) => {
+    setLoadingPrefs(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+        console.error('Error loading preferences:', error);
+      } else if (data) {
+        setLikes(data.likes || []);
+        setDislikes(data.dislikes || []);
+        setDietaryRestrictions(data.dietary_restrictions || []);
+        setPreferences(data.preferences || []);
+      }
+    } catch (err) {
+      console.error('Error loading preferences:', err);
+    } finally {
+      setLoadingPrefs(false);
+    }
+  };
+
+  const saveUserPreferences = async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id: user.id,
+          likes,
+          dislikes,
+          dietary_restrictions: dietaryRestrictions,
+          preferences,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error saving preferences:', err);
+    }
+  };
+
+  const handleAuthSuccess = async () => {
+    // Get the current session after authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      setUser(session.user);
+      await loadUserPreferences(session.user.id);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setLikes([]);
+    setDislikes([]);
+    setDietaryRestrictions([]);
+    setPreferences([]);
+  };
+
   const togglePreference = (pref: string) => {
-    setPreferences((prev) =>
-      prev.includes(pref) ? prev.filter((p) => p !== pref) : [...prev, pref]
-    );
+    setPreferences((prev) => {
+      const newPrefs = prev.includes(pref) 
+        ? prev.filter((p) => p !== pref) 
+        : [...prev, pref];
+      // Save preferences if user is logged in
+      if (user) {
+        setTimeout(() => saveUserPreferences(), 100);
+      }
+      return newPrefs;
+    });
   };
 
   const handlePlanTrip = async (e: React.FormEvent) => {
@@ -80,6 +184,9 @@ export default function Home() {
           num_days: numDays,
           budget,
           preferences,
+          likes,
+          dislikes,
+          dietary_restrictions: dietaryRestrictions,
           mode,
         }),
       });
@@ -142,12 +249,24 @@ export default function Home() {
               </a>
             </div>
             <div className="flex items-center gap-4">
-              <button className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#34d399]">
-                Login
-              </button>
-              <button className="rounded-full bg-[#34d399] px-4 py-2 text-sm font-medium text-[#0a1929] transition hover:bg-[#2dd4bf]">
-                Profile
-              </button>
+              {user ? (
+                <>
+                  <span className="text-sm text-white/80">{user.email}</span>
+                  <button
+                    onClick={handleSignOut}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#34d399]"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#34d399]"
+                >
+                  Sign In / Sign Up
+                </button>
+              )}
             </div>
           </nav>
         </header>
@@ -263,6 +382,75 @@ export default function Home() {
                   ))}
                 </div>
               </div>
+
+              {/* Dietary Restrictions - Only shown when logged in */}
+              {user && (
+                <div className="mb-6">
+                  <label className="mb-3 block text-sm font-semibold text-[#0a1929]">
+                    Dietary Restrictions
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {dietaryOptions.map((diet) => (
+                      <button
+                        key={diet}
+                        type="button"
+                        onClick={() => {
+                          const newRestrictions = dietaryRestrictions.includes(diet)
+                            ? dietaryRestrictions.filter((d) => d !== diet)
+                            : [...dietaryRestrictions, diet];
+                          setDietaryRestrictions(newRestrictions);
+                          saveUserPreferences();
+                        }}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                          dietaryRestrictions.includes(diet)
+                            ? "bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md"
+                            : "bg-white text-[#0a1929] hover:bg-blue-50 border border-blue-200"
+                        }`}
+                      >
+                        {diet.charAt(0).toUpperCase() + diet.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Likes and Dislikes - Only shown when logged in */}
+              {user && (
+                <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                      Likes
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. museums, hiking, local cuisine"
+                      value={likes.join(", ")}
+                      onChange={(e) => {
+                        const newLikes = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        setLikes(newLikes);
+                        saveUserPreferences();
+                      }}
+                      className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#0a1929]">
+                      Dislikes
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. crowds, nightlife, fast food"
+                      value={dislikes.join(", ")}
+                      onChange={(e) => {
+                        const newDislikes = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        setDislikes(newDislikes);
+                        saveUserPreferences();
+                      }}
+                      className="w-full rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm text-[#0a1929] outline-none transition focus:border-[#34d399] focus:ring-2 focus:ring-[#34d399]"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Optimization Mode */}
               <div className="mb-6">
@@ -509,6 +697,12 @@ export default function Home() {
           animation: fade-in-up 0.8s ease-out;
         }
       `}</style>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
     </>
   );
 }
