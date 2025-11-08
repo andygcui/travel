@@ -120,9 +120,9 @@ export default function Home() {
               .map((p: any) => p.preference_value);
             
             // Merge with existing preferences (avoid duplicates)
-            setLikes((prev) => [...new Set([...prev, ...chatLikes])]);
-            setDislikes((prev) => [...new Set([...prev, ...chatDislikes])]);
-            setDietaryRestrictions((prev) => [...new Set([...prev, ...chatDietary])]);
+            setLikes((prev) => Array.from(new Set([...prev, ...chatLikes])));
+            setDislikes((prev) => Array.from(new Set([...prev, ...chatDislikes])));
+            setDietaryRestrictions((prev) => Array.from(new Set([...prev, ...chatDietary])));
           }
         }
       } catch (err) {
