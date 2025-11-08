@@ -17,7 +17,10 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 AMADEUS_API_KEY = os.getenv("AMADEUS_API_KEY")
 AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
-AMADEUS_BASE_URL = os.getenv("AMADEUS_BASE_URL", "https://test.api.amadeus.com")
+AMADEUS_ENV = os.getenv("AMADEUS_ENV", "test").lower()
+AMADEUS_BASE_URL = (
+    "https://api.amadeus.com" if AMADEUS_ENV == "live" else "https://test.api.amadeus.com"
+)
 
 
 async def get_amadeus_token() -> Optional[str]:
