@@ -1,10 +1,8 @@
-
 "use client";
 
 import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView, DirectionsService, DirectionsRenderer } from "@react-google-maps/api";
 
 // Travel mode for directions (default: walking, can be changed to 'TRANSIT' for public transport)
-// Default travel mode
 const DEFAULT_TRAVEL_MODE = "WALKING";
 
 // ...existing code...
@@ -28,23 +26,13 @@ const ACCENT = "#2d6a4f"; // quiet fern green
 const ACCENT_DARK = "#1b4332"; // darker outline for contrast
 
 
-
 export default function ItineraryMap({ destination, attractions }: ItineraryMapProps) {
-  // Store total distances for walking and driving
-  const [walkingDistance, setWalkingDistance] = useState<number | null>(null);
-  const [drivingDistance, setDrivingDistance] = useState<number | null>(null);
-  // Store total durations for walking, walk+transit, and driving
-  const [walkingDuration, setWalkingDuration] = useState<string | null>(null);
-  const [drivingDuration, setDrivingDuration] = useState<string | null>(null);
-  const [walkTransitDuration, setWalkTransitDuration] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [activeMarker, setActiveMarker] = useState<Place | null>(null);
   const [details, setDetails] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<({ lat: number; lng: number } | null)[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
-  type TravelModeOption = 'WALKING' | 'TRANSIT' | 'DRIVING' | 'WALKING+TRANSIT';
-  const [travelMode, setTravelMode] = useState<TravelModeOption>(DEFAULT_TRAVEL_MODE);
   const mapRef = useRef<google.maps.Map | null>(null);
   const coordinateCache = useRef<Map<string, { lat: number; lng: number }>>(new Map());
 
@@ -74,116 +62,28 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     const waypoints = validCoords.slice(1, -1).map(c => ({ location: c, stopover: true }));
     const origin = validCoords[0];
     const destinationCoord = validCoords[validCoords.length - 1];
+    const travelMode = DEFAULT_TRAVEL_MODE;
+    // Use DirectionsService to get route
     const service = new window.google.maps.DirectionsService();
-
-    // Helper to sum up the total distance from a DirectionsResult
-    const getTotalDistance = (result: google.maps.DirectionsResult | null) => {
-      if (!result || !result.routes || !result.routes[0] || !result.routes[0].legs) return 0;
-      return result.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
-    };
-
-    // Helper to sum up the total duration from a DirectionsResult (returns a string like '1 hr 5 min')
-    const getTotalDuration = (result: google.maps.DirectionsResult | null) => {
-      if (!result || !result.routes || !result.routes[0] || !result.routes[0].legs) return null;
-      const totalSeconds = result.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
-      if (totalSeconds === 0) return null;
-      // Format as h m
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.round((totalSeconds % 3600) / 60);
-      let str = '';
-      if (hours > 0) str += `${hours} hr `;
-      if (minutes > 0 || hours === 0) str += `${minutes} min`;
-      return str.trim();
-    };
-
-    // Helper to request directions for a given mode, optimizing for time
-    const requestDirections = (mode: 'WALKING' | 'TRANSIT' | 'DRIVING', cb: (result: google.maps.DirectionsResult | null, status: string) => void) => {
-      // For time optimization, set optimizeWaypoints: false and use drivingOptions for DRIVING
-      const request: google.maps.DirectionsRequest = {
+    service.route(
+      {
         origin,
         destination: destinationCoord,
         waypoints,
-        travelMode: window.google.maps.TravelMode[mode],
-        optimizeWaypoints: false, // Do not optimize for distance
-      };
-      if (mode === 'DRIVING') {
-        request.drivingOptions = {
-          departureTime: new Date(), // Use current time for best traffic/time estimate
-        };
-      }
-      service.route(request, (result, status) => cb(result, status));
-    };
-
-    if (travelMode === 'WALKING+TRANSIT') {
-      requestDirections('WALKING', (result, status) => {
-        if (status === 'OK' && result) {
+        travelMode: window.google.maps.TravelMode[travelMode],
+        optimizeWaypoints: true, // Let Google optimize the order for least time
+      },
+      (result, status) => {
+        if (status === "OK" && result) {
           setDirections(result);
           setDirectionsError(null);
-          setWalkingDistance(getTotalDistance(result));
-          setWalkingDuration(getTotalDuration(result));
-        } else {
-          requestDirections('TRANSIT', (result2, status2) => {
-            if (status2 === 'OK' && result2) {
-              setDirections(result2);
-              setDirectionsError(null);
-              setWalkTransitDuration(getTotalDuration(result2));
-            } else {
-              setDirections(null);
-              setDirectionsError('Could not fetch walking or transit directions.');
-            }
-          });
-        }
-      });
-      // Also fetch driving distance and duration in the background
-      requestDirections('DRIVING', (result, status) => {
-        if (status === 'OK' && result) {
-          setDrivingDistance(getTotalDistance(result));
-          setDrivingDuration(getTotalDuration(result));
-        }
-      });
-    } else {
-      requestDirections(travelMode as 'WALKING' | 'TRANSIT' | 'DRIVING', (result, status) => {
-        if (status === 'OK' && result) {
-          setDirections(result);
-          setDirectionsError(null);
-          if (travelMode === 'WALKING') {
-            setWalkingDistance(getTotalDistance(result));
-            setWalkingDuration(getTotalDuration(result));
-          } else if (travelMode === 'DRIVING') {
-            setDrivingDistance(getTotalDistance(result));
-            setDrivingDuration(getTotalDuration(result));
-          }
         } else {
           setDirections(null);
-          setDirectionsError(`Could not fetch ${travelMode.toLowerCase()} directions.`);
+          setDirectionsError("Could not fetch walking directions.");
         }
-      });
-      // If not walking, also fetch walking distance and duration in the background
-      if (travelMode !== 'WALKING') {
-        requestDirections('WALKING', (result, status) => {
-          if (status === 'OK' && result) {
-            setWalkingDistance(getTotalDistance(result));
-            setWalkingDuration(getTotalDuration(result));
-          }
-        });
       }
-      // If not driving, also fetch driving distance and duration in the background
-      if (travelMode !== 'DRIVING') {
-        requestDirections('DRIVING', (result, status) => {
-          if (status === 'OK' && result) {
-            setDrivingDistance(getTotalDistance(result));
-            setDrivingDuration(getTotalDuration(result));
-          }
-        });
-      }
-    }
-    // Always fetch walk+transit duration in the background for display
-    requestDirections('TRANSIT', (result, status) => {
-      if (status === 'OK' && result) {
-        setWalkTransitDuration(getTotalDuration(result));
-      }
-    });
-}, [isGoogleMapsLoaded, coordinates, travelMode]);
+    );
+  }, [isGoogleMapsLoaded, coordinates]);
 
   // Initialize coordinates immediately from backend data (if available)
   useEffect(() => {
@@ -246,6 +146,7 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
       for (const i of needsGeocoding) {
         const a = attractions[i];
         if (!a) continue;
+        
         // Check cache first
         const cacheKey = `${a.name}-${destination}`;
         if (coordinateCache.current.has(cacheKey)) {
@@ -253,17 +154,22 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           updatedCoords[i] = cached;
           continue;
         }
-        // Geocode missing coordinates (no JSX here)
+
+        // Geocode missing coordinates
         try {
           const searchQuery = `${a.name}, ${destination}`;
           const res = await fetch(
             `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}`
           );
           const data = await res.json();
+          
           if (data.results?.[0]?.geometry?.location) {
             const loc = data.results[0].geometry.location;
             updatedCoords[i] = { lat: loc.lat, lng: loc.lng };
             coordinateCache.current.set(cacheKey, { lat: loc.lat, lng: loc.lng });
+          } else {
+            console.warn(`Could not geocode: ${a.name}`);
+            // Keep as null
           }
         } catch (error) {
           console.error(`Error geocoding ${a.name}:`, error);
@@ -276,12 +182,35 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
       // Update map center if we didn't have one before
       setMapCenter((currentCenter) => {
         if (currentCenter) return currentCenter; // Don't override if already set
+        
         const firstValid = updatedCoords.find(c => c && c.lat && c.lng);
         if (firstValid) {
           return firstValid;
         }
+        
         // If no valid coordinate found, we'll geocode destination asynchronously
         // This will be handled after setLoading
+        return null;
+      });
+
+      // Fallback geocoding for destination if still no center (async, non-blocking)
+      setMapCenter((currentCenter) => {
+        if (currentCenter) return currentCenter;
+        
+        // Async geocoding - fire and forget
+        fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${apiKey}`
+        )
+          .then((r) => r.json())
+          .then((geo) => {
+            if (geo.results?.[0]?.geometry?.location) {
+              setMapCenter(geo.results[0].geometry.location);
+            }
+          })
+          .catch((error) => {
+            console.error("Error geocoding destination:", error);
+          });
+        
         return null;
       });
 
@@ -381,234 +310,200 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
   const displayCenter = mapCenter || (coordinates.length > 0 && coordinates[0] ? coordinates[0] : { lat: 0, lng: 0 });
 
   return (
-  <div className="flex flex-col w-full">
-      {/* Display estimated time for the selected mode */}
-      <div className="flex gap-4 mb-2 self-end text-xs text-gray-700">
-        {travelMode === 'WALKING' && walkingDuration && (
-          <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded">Walk: {walkingDuration}</span>
-        )}
-        {travelMode === 'WALKING+TRANSIT' && (
-          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-            Walk+Transit: {walkTransitDuration ? walkTransitDuration : 'Calculating...'}
-          </span>
-        )}
-        {travelMode === 'DRIVING' && drivingDuration && (
-          <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">Vehicle: {drivingDuration}</span>
-        )}
-      </div>
-      {/* Travel mode toggle */}
-      <div className="mb-2 flex gap-2 self-end z-10">
-        <button
-          className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'WALKING' ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-700 border border-emerald-200'}`}
-          onClick={() => setTravelMode('WALKING')}
-        >
-          Walk
-        </button>
-        <button
-          className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'WALKING+TRANSIT' ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200'}`}
-          onClick={() => setTravelMode('WALKING+TRANSIT')}
-        >
-          Walk+Transit
-        </button>
-        <button
-          className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'DRIVING' ? 'bg-orange-600 text-white' : 'bg-white text-orange-700 border border-orange-200'}`}
-          onClick={() => setTravelMode('DRIVING')}
-        >
-          Vehicle
-        </button>
-      </div>
-      <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl">
+    <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl">
         <LoadScript 
           googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}
           onLoad={() => {
             setIsGoogleMapsLoaded(true);
           }}
         >
-          <GoogleMap
-            mapContainerStyle={{ width: "100%", height: "100%" }}
-            center={displayCenter}
-            zoom={12}
-            options={{
-              mapTypeControl: false,
-              fullscreenControl: false,
-              streetViewControl: false,
-              clickableIcons: false,
-            }}
-            onLoad={(map) => {
-              mapRef.current = map;
-              setIsGoogleMapsLoaded(true);
-              // Auto-fit bounds when map loads if we have coordinates
-              if (coordinates.length > 0 && typeof google !== "undefined" && google.maps) {
-                const bounds = new google.maps.LatLngBounds();
-                let hasValidCoords = false;
-                coordinates.forEach((c) => {
-                  if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
-                    bounds.extend(c as any);
-                    hasValidCoords = true;
-                  }
-                });
-                // Only fit bounds if we have at least one valid coordinate
-                if (hasValidCoords) {
-                  map.fitBounds(bounds, 64);
+        <GoogleMap
+          mapContainerStyle={{ width: "100%", height: "100%" }}
+          center={displayCenter}
+          zoom={12}
+          options={{
+            mapTypeControl: false,
+            fullscreenControl: false,
+            streetViewControl: false,
+            clickableIcons: false,
+          }}
+          onLoad={(map) => {
+            mapRef.current = map;
+            setIsGoogleMapsLoaded(true);
+            // Auto-fit bounds when map loads if we have coordinates
+            if (coordinates.length > 0 && typeof google !== "undefined" && google.maps) {
+              const bounds = new google.maps.LatLngBounds();
+              let hasValidCoords = false;
+              coordinates.forEach((c) => {
+                if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
+                  bounds.extend(c as any);
+                  hasValidCoords = true;
                 }
+              });
+              // Only fit bounds if we have at least one valid coordinate
+              if (hasValidCoords) {
+                map.fitBounds(bounds, 64);
               }
-            }}
-          >
-            {/* ...existing map children... */}
-            {directions && (
-              <DirectionsRenderer
-                directions={directions}
-                options={{
-                  suppressMarkers: true, // We'll use our custom markers
-                  polylineOptions: {
-                    strokeColor:
-                      travelMode === 'WALKING'
-                        ? '#2d6a4f' // green
-                        : travelMode === 'WALKING+TRANSIT'
-                        ? '#2563eb' // blue
-                        : travelMode === 'DRIVING'
-                        ? '#ea580c' // orange
-                        : '#2d6a4f',
-                    strokeWeight: 5,
-                    strokeOpacity: 0.85,
-                  },
+            }
+          }}
+        >
+          {/* Walking/Transit Route (solid line) */}
+          {directions && (
+            <DirectionsRenderer
+              directions={directions}
+              options={{
+                suppressMarkers: true, // We'll use our custom markers
+                polylineOptions: {
+                  strokeColor: ACCENT,
+                  strokeWeight: 5,
+                  strokeOpacity: 0.85,
+                },
+              }}
+            />
+          )}
+
+          {/* Markers with pushpin style (quiet fern green) */}
+          {isGoogleMapsLoaded && attractions.map((a, i) => {
+            // Priority: Use coordinates from state, fallback to attraction's lat/lng
+            let coord = coordinates[i];
+            if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
+              coord = { lat: a.lat, lng: a.lng };
+            }
+            
+            // Don't render if no coordinate
+            if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
+            
+            // Ensure google.maps is available before creating Point
+            if (typeof google === "undefined" || !google.maps || !google.maps.Point) return null;
+            
+            return (
+              <Marker
+                key={`${a.name}-${a.day}-${i}`}
+                position={{ lat: coord.lat, lng: coord.lng }}
+                onClick={() => handleMarkerClick(a)}
+                icon={{
+                  // Pushpin SVG path - teardrop shape (like 📍 emoji)
+                  // Proper pushpin with rounded top and point at bottom
+                  path: "M12 0C5.373 0 0 5.373 0 12c0 8.837 12 20 12 20s12-11.163 12-20C24 5.373 18.627 0 12 0zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z",
+                  fillColor: ACCENT,
+                  fillOpacity: 1,
+                  strokeColor: ACCENT_DARK,
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  scale: 0.75,
+                  anchor: new google.maps.Point(12, 24), // Anchor at bottom point of pushpin
                 }}
+                title={a.name}
               />
-            )}
-            {/* ...other map children (markers, overlays, info windows)... */}
-            {isGoogleMapsLoaded && attractions.map((a, i) => {
-              let coord = coordinates[i];
-              if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
-                coord = { lat: a.lat, lng: a.lng };
-              }
-              if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
-              if (typeof google === "undefined" || !google.maps || !google.maps.Point) return null;
-              return (
-                <Marker
-                  key={`${a.name}-${a.day}-${i}`}
-                  position={{ lat: coord.lat, lng: coord.lng }}
-                  onClick={() => handleMarkerClick(a)}
-                  icon={{
-                    path: "M12 0C5.373 0 0 5.373 0 12c0 8.837 12 20 12 20s12-11.163 12-20C24 5.373 18.627 0 12 0zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z",
-                    fillColor: ACCENT,
-                    fillOpacity: 1,
-                    strokeColor: ACCENT_DARK,
-                    strokeOpacity: 0.8,
-                    strokeWeight: 2,
-                    scale: 0.75,
-                    anchor: new google.maps.Point(12, 24),
-                  }}
-                  title={a.name}
-                />
-              );
-            })}
-            {isGoogleMapsLoaded && attractions.map((a, i) => {
-              let coord = coordinates[i];
-              if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
-                coord = { lat: a.lat, lng: a.lng };
-              }
-              if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
-              if (typeof google === "undefined" || !google.maps) return null;
-              return (
-                <OverlayView
-                  key={`label-${a.name}-${a.day}-${i}`}
-                  position={{ lat: coord.lat, lng: coord.lng }}
-                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-                >
-                  <div
-                    style={{
-                      transform: "translate(-50%, calc(-100% - 20px))",
-                      backgroundColor: ACCENT,
-                      color: "#ffffff",
-                      fontSize: "10px",
-                      fontWeight: "600",
-                      padding: "3px 8px",
-                      borderRadius: "4px",
-                      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
-                      whiteSpace: "nowrap",
-                      border: `1px solid ${ACCENT_DARK}`,
-                      pointerEvents: "none",
-                      display: "inline-block",
-                      lineHeight: "1.2",
-                    }}
-                  >
-                    {a.name.length > 20 ? a.name.substring(0, 17) + "..." : a.name}
-                  </div>
-                </OverlayView>
-              );
-            })}
-            {activeMarker && activeMarker.lat && activeMarker.lng && (
-              <InfoWindow
-                position={{ lat: activeMarker.lat, lng: activeMarker.lng }}
-                onCloseClick={() => {
-                  setActiveMarker(null);
-                  setDetails(null);
-                }}
+            );
+          })}
+
+          {/* Custom labels with background rectangles above pushpins */}
+          {isGoogleMapsLoaded && attractions.map((a, i) => {
+            // Priority: Use coordinates from state, fallback to attraction's lat/lng
+            let coord = coordinates[i];
+            if (!coord && a.lat && a.lng && typeof a.lat === 'number' && typeof a.lng === 'number') {
+              coord = { lat: a.lat, lng: a.lng };
+            }
+            
+            // Don't render if no coordinate
+            if (!coord || typeof coord.lat !== 'number' || typeof coord.lng !== 'number') return null;
+            
+            // Ensure google.maps is available
+            if (typeof google === "undefined" || !google.maps) return null;
+            
+            return (
+              <OverlayView
+                key={`label-${a.name}-${a.day}-${i}`}
+                position={{ lat: coord.lat, lng: coord.lng }}
+                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
               >
-                <div className="max-w-xs text-sm text-gray-800 p-2">
-                  <div
-                    style={{
-                      backgroundColor: "rgba(30,30,30,0.85)",
-                      color: "#fff",
-                      fontSize: "12px",
-                      padding: "4px 8px",
-                      borderRadius: "6px",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                      marginBottom: "8px",
-                      display: "inline-block",
-                    }}
-                  >
-                    {details?.name || activeMarker.name}
-                  </div>
-                  {details?.photos?.[0]?.photo_reference && (
-                    <img
-                      src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=300&photo_reference=${details.photos[0].photo_reference}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
-                      alt={details.name || activeMarker.name}
-                      className="rounded mb-2 w-full"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = '/placeholder-location.png';
-                      }}
-                    />
-                  )}
-                  {details?.formatted_address && (
-                    <p className="text-xs mb-2 text-gray-600">{details.formatted_address}</p>
-                  )}
-                  {typeof details?.rating === "number" && (
-                    <p className="text-xs mb-2 font-medium">⭐ {details.rating.toFixed(1)} / 5.0</p>
-                  )}
-                  {details?.editorial_summary?.overview && (
-                    <p className="text-xs mt-2 text-gray-700 leading-relaxed">{details.editorial_summary.overview}</p>
-                  )}
-                  {!details && (
-                    <>
-                      <img
-                        src={'/placeholder-location.png'}
-                        alt={activeMarker?.name || 'Location'}
-                        className="rounded mb-2 w-full"
-                        style={{ maxHeight: '120px', objectFit: 'cover' }}
-                      />
-                      <p className="text-xs text-gray-500 italic">Loading details...</p>
-                    </>
-                  )}
-                  {details?.url && (
-                    <a
-                      href={details.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-700 text-xs underline mt-3 block font-medium hover:text-emerald-900"
-                    >
-                      View on Google Maps →
-                    </a>
-                  )}
+                <div
+                  style={{
+                    transform: "translate(-50%, calc(-100% - 20px))",
+                    backgroundColor: ACCENT, // Fern green (#2d6a4f)
+                    color: "#ffffff",
+                    fontSize: "10px",
+                    fontWeight: "600",
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
+                    whiteSpace: "nowrap",
+                    border: `1px solid ${ACCENT_DARK}`,
+                    pointerEvents: "none",
+                    display: "inline-block", // Makes rectangle wrap to text width
+                    lineHeight: "1.2",
+                  }}
+                >
+                  {a.name.length > 20 ? a.name.substring(0, 17) + "..." : a.name}
                 </div>
-              </InfoWindow>
-            )}
+              </OverlayView>
+            );
+          })}
+
+          {/* Info Window for selected marker */}
+          {activeMarker && activeMarker.lat && activeMarker.lng && (
+            <InfoWindow
+              position={{ lat: activeMarker.lat, lng: activeMarker.lng }}
+              onCloseClick={() => {
+                setActiveMarker(null);
+                setDetails(null);
+              }}
+            >
+              <div className="max-w-xs text-sm text-gray-800 p-2">
+                {/* Tag-like label header */}
+                <div
+                  style={{
+                    backgroundColor: "rgba(30,30,30,0.85)",
+                    color: "#fff",
+                    fontSize: "12px",
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    marginBottom: "8px",
+                    display: "inline-block",
+                  }}
+                >
+                  {details?.name || activeMarker.name}
+                </div>
+                {details?.photos?.[0]?.photo_reference && (
+                  <img
+                    src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=300&photo_reference=${details.photos[0].photo_reference}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
+                    alt={details.name || activeMarker.name}
+                    className="rounded mb-2 w-full"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                )}
+                {details?.formatted_address && (
+                  <p className="text-xs mb-2 text-gray-600">{details.formatted_address}</p>
+                )}
+                {typeof details?.rating === "number" && (
+                  <p className="text-xs mb-2 font-medium">⭐ {details.rating.toFixed(1)} / 5.0</p>
+                )}
+                {details?.editorial_summary?.overview && (
+                  <p className="text-xs mt-2 text-gray-700 leading-relaxed">{details.editorial_summary.overview}</p>
+                )}
+                {!details && (
+                  <p className="text-xs text-gray-500 italic">Loading details...</p>
+                )}
+                {details?.url && (
+                  <a
+                    href={details.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-700 text-xs underline mt-3 block font-medium hover:text-emerald-900"
+                  >
+                    View on Google Maps →
+                  </a>
+                )}
+              </div>
+            </InfoWindow>
+          )}
         </GoogleMap>
       </LoadScript>
     </div>
-  </div>
   );
 }
-
-
 
