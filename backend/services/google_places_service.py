@@ -122,6 +122,7 @@ async def fetch_attractions_google(
                     "places.photos",
                     "places.editorialSummary",
                     "places.reviews",
+                    "places.id",
                 ]
             )
 
@@ -182,6 +183,224 @@ async def fetch_attractions_google(
             return _fallback_pois(destination)
 
 
+async def fetch_place_details_for_lodging(
+    name: str,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    address: Optional[str] = None,
+) -> Optional[PointOfInterest]:
+    """
+    Fetch hotel details (photos, reviews, ratings) from Google Places.
+    """
+    if not GOOGLE_PLACES_KEY or not name:
+        return None
+
+    queries = []
+    normalized_address = (address or "").strip()
+    if normalized_address and normalized_address.lower() not in {"address not available", "city center"}:
+        queries.append(f"{name} {normalized_address}")
+    queries.append(name)
+    queries.append(f"{name} hotel")
+
+    field_mask = ",".join(
+        [
+            "id",
+            "displayName",
+            "primaryType",
+            "location",
+            "formattedAddress",
+            "rating",
+            "userRatingCount",
+            "photos",
+            "editorialSummary",
+            "reviews",
+        ]
+    )
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for text_query in queries:
+            request_body = {
+                "textQuery": text_query,
+                "includedTypes": ["lodging"],
+            }
+
+            if latitude is not None and longitude is not None:
+                request_body["locationBias"] = {
+                    "circle": {
+                        "center": {"latitude": latitude, "longitude": longitude},
+                        "radius": 5000,
+                    }
+                }
+
+            try:
+                response = await client.post(
+                    f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchText",
+                    headers={
+                        "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                        "X-Goog-FieldMask": field_mask,
+                    },
+                    json=request_body,
+                )
+                response.raise_for_status()
+                data = response.json()
+                parsed = _parse_places(data.get("places", []), 1)
+                if parsed:
+                    return parsed[0]
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "Google Places hotel enrichment error %s: %s",
+                    exc.response.status_code,
+                    exc.response.text,
+                )
+                return None
+            except Exception as exc:
+                logger.error("Google Places hotel enrichment error: %s", exc)
+                return None
+
+        if latitude is not None and longitude is not None:
+            try:
+                nearby_response = await client.post(
+                    f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchNearby",
+                    headers={
+                        "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                        "X-Goog-FieldMask": field_mask,
+                    },
+                    json={
+                        "locationRestriction": {
+                            "circle": {
+                                "center": {"latitude": latitude, "longitude": longitude},
+                                "radius": 3000,
+                            }
+                        },
+                        "includedTypes": ["lodging"],
+                        "maxResultCount": 5,
+                    },
+                )
+                nearby_response.raise_for_status()
+                nearby_data = nearby_response.json()
+                parsed_nearby = _parse_places(nearby_data.get("places", []), 1)
+                if parsed_nearby:
+                    return parsed_nearby[0]
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "Google Places hotel nearby enrichment error %s: %s",
+                    exc.response.status_code,
+                    exc.response.text,
+                )
+            except Exception as exc:
+                logger.error("Google Places hotel nearby enrichment error: %s", exc)
+
+    logger.info("Google Places returned no lodging details for '%s'", name)
+    return None
+
+
+async def fetch_place_details_by_id(place_id: str) -> Optional[PointOfInterest]:
+    """
+    Fetch detailed place info using a Google Places ID.
+    """
+    if not GOOGLE_PLACES_KEY or not place_id:
+        return None
+
+    field_mask = ",".join(
+        [
+            "places.id",
+            "places.displayName",
+            "places.primaryType",
+            "places.location",
+            "places.formattedAddress",
+            "places.rating",
+            "places.userRatingCount",
+            "places.photos",
+            "places.editorialSummary",
+            "places.reviews",
+        ]
+    )
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.get(
+                f"{GOOGLE_PLACES_BASE_URL_NEW}/places/{place_id}",
+                headers={
+                    "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                    "X-Goog-FieldMask": field_mask,
+                },
+            )
+            response.raise_for_status()
+            place_data = response.json()
+            parsed = _parse_places([place_data], 1)
+            return parsed[0] if parsed else None
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Google Places detail error %s: %s",
+                exc.response.status_code,
+                exc.response.text,
+            )
+        except Exception as exc:
+            logger.error("Google Places detail error: %s", exc)
+
+    return None
+
+
+async def fetch_hotels_nearby(
+    latitude: float,
+    longitude: float,
+    limit: int = 10,
+) -> List[PointOfInterest]:
+    """
+    Fetch hotel POIs near a location using Google Places.
+    """
+    if not GOOGLE_PLACES_KEY:
+        return []
+
+    field_mask = ",".join(
+        [
+            "places.id",
+            "places.displayName",
+            "places.primaryType",
+            "places.location",
+            "places.formattedAddress",
+            "places.rating",
+            "places.userRatingCount",
+            "places.photos",
+            "places.editorialSummary",
+            "places.reviews",
+        ]
+    )
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.post(
+                f"{GOOGLE_PLACES_BASE_URL_NEW}/places:searchNearby",
+                headers={
+                    "X-Goog-Api-Key": GOOGLE_PLACES_KEY,
+                    "X-Goog-FieldMask": field_mask,
+                },
+                json={
+                    "locationRestriction": {
+                        "circle": {
+                            "center": {"latitude": latitude, "longitude": longitude},
+                            "radius": 5000,
+                        }
+                    },
+                    "includedTypes": ["lodging"],
+                    "maxResultCount": max(limit, 5),
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return _parse_places(data.get("places", []), limit)
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "Google Places nearby hotels error %s: %s",
+                exc.response.status_code,
+                exc.response.text,
+            )
+        except Exception as exc:
+            logger.error("Google Places nearby hotels error: %s", exc)
+
+    return []
+
+
 def _fallback_pois(destination: str) -> List[PointOfInterest]:
     """Fallback POI data"""
     return [
@@ -238,6 +457,7 @@ def _parse_places(places: List[dict], limit: int) -> List[PointOfInterest]:
                 user_ratings_total=place.get("userRatingCount"),
                 photo_urls=photos,
                 reviews=reviews,
+                place_id=place.get("id"),
             )
         )
     return results

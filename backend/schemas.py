@@ -123,6 +123,19 @@ class LodgingOption(BaseModel):
     booking_url: Optional[str] = None
     refundable_until: Optional[datetime] = None
     emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions per night in kg")
+    latitude: Optional[float] = Field(default=None, description="Latitude from Google Places")
+    longitude: Optional[float] = Field(default=None, description="Longitude from Google Places")
+    rating: Optional[float] = Field(default=None, description="Average Google rating 1-5")
+    user_ratings_total: Optional[int] = Field(
+        default=None, description="Total number of Google reviews"
+    )
+    photo_urls: List[str] = Field(default_factory=list, description="Photo URLs from Google Places")
+    reviews: List["POIReview"] = Field(default_factory=list, description="Highlighted hotel reviews")
+    description: Optional[str] = Field(
+        default=None,
+        description="Formatted address or editorial summary from Google Places",
+    )
+    place_id: Optional[str] = Field(default=None, description="Google Places ID for the lodging")
 
 
 class PointOfInterest(BaseModel):
@@ -138,6 +151,7 @@ class PointOfInterest(BaseModel):
     )
     photo_urls: List[str] = Field(default_factory=list, description="Photo URLs from Google Places")
     reviews: List["POIReview"] = Field(default_factory=list, description="Highlighted visitor reviews")
+    place_id: Optional[str] = Field(default=None, description="Google Places ID")
 
 
 class POIReview(BaseModel):

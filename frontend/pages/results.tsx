@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { gsap } from "gsap";
@@ -87,6 +87,7 @@ interface PointOfInterest {
   user_ratings_total?: number;
   photo_urls?: string[];
   reviews?: POIReview[];
+  place_id?: string;
 }
 
 interface LodgingOption {
@@ -100,6 +101,14 @@ interface LodgingOption {
   booking_url?: string;
   refundable_until?: string;
   emissions_kg?: number;
+  latitude?: number;
+  longitude?: number;
+  rating?: number;
+  user_ratings_total?: number;
+  photo_urls?: string[];
+  reviews?: POIReview[];
+  description?: string;
+  place_id?: string;
 }
 
 interface HotelCard {
@@ -117,6 +126,7 @@ interface HotelCard {
   emissionsKg?: number;
   bookingUrl?: string;
   source: "lodging" | "poi";
+  reviews?: POIReview[];
 }
 
 interface DayAttractionBundle {
@@ -147,6 +157,9 @@ interface ItineraryResponse {
   hotels?: LodgingOption[];
   preferences?: string[]; // User's selected preferences
 }
+
+const HOTEL_IMAGE_DEFAULT =
+  "https://images.unsplash.com/photo-1512914890250-353c67b3939d?auto=format&fit=crop&w=900&q=80";
 
 // Helper: Extract place names from text
 const extractPlaceNames = (text: string): string[] => {
@@ -267,6 +280,80 @@ export default function Results() {
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharingTrip, setSharingTrip] = useState(false);
+  const [hotelReviewStates, setHotelReviewStates] = useState<
+    Record<string, { open: boolean; index: number }>
+  >({});
+  const [exploreReviewStates, setExploreReviewStates] = useState<
+    Record<string, { open: boolean; index: number }>
+  >({});
+
+  const normalizedHotelKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
+  const normalizedExploreKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
+
+  const toggleHotelReviews = useCallback(
+    (name: string, reviewCount: number) => {
+      setHotelReviewStates((prev) => {
+        const key = normalizedHotelKey(name);
+        const current = prev[key] ?? { open: false, index: 0 };
+        const isOpening = !current.open;
+        return {
+          ...prev,
+          [key]: {
+            open: isOpening,
+            index: isOpening ? 0 : current.index % Math.max(1, reviewCount || 1),
+          },
+        };
+      });
+    },
+    [normalizedHotelKey],
+  );
+
+  const cycleHotelReview = useCallback((name: string, total: number, delta: number) => {
+    if (!total) return;
+    setHotelReviewStates((prev) => {
+      const key = normalizedHotelKey(name);
+      const current = prev[key] ?? { open: true, index: 0 };
+      const nextIndex = (current.index + delta + total) % total;
+      return {
+        ...prev,
+        [key]: { open: true, index: nextIndex },
+      };
+    });
+  }, [normalizedHotelKey]);
+
+  const toggleExploreReviews = useCallback(
+    (name: string, reviewCount: number) => {
+      setExploreReviewStates((prev) => {
+        const key = normalizedExploreKey(name);
+        const current = prev[key] ?? { open: false, index: 0 };
+        const isOpening = !current.open;
+        return {
+          ...prev,
+          [key]: {
+            open: isOpening,
+            index: isOpening ? 0 : current.index % Math.max(1, reviewCount || 1),
+          },
+        };
+      });
+    },
+    [normalizedExploreKey],
+  );
+
+  const cycleExploreReview = useCallback(
+    (name: string, total: number, delta: number) => {
+      if (!total) return;
+      setExploreReviewStates((prev) => {
+        const key = normalizedExploreKey(name);
+        const current = prev[key] ?? { open: true, index: 0 };
+        const nextIndex = (current.index + delta + total) % total;
+        return {
+          ...prev,
+          [key]: { open: true, index: nextIndex },
+        };
+      });
+    },
+    [normalizedExploreKey],
+  );
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
@@ -525,34 +612,58 @@ export default function Results() {
     (itinerary.hotels ?? []).forEach((hotel) => {
       if (!hotel.name) return;
       const poi = findPoiForHotel(hotel.name);
-      const fallbackImage = `https://source.unsplash.com/featured/?hotel,travel&sig=${Math.random()}`;
       const image =
-        poi?.photo_urls && poi.photo_urls.length > 0
-          ? poi.photo_urls[0]
-          : fallbackImage;
-      const address =
-        hotel.address && hotel.address.trim().length > 0
-          ? hotel.address
-          : poi?.description && poi.description.trim().length > 0
-            ? poi.description
-            : poi?.latitude !== undefined && poi.longitude !== undefined
-              ? `${poi.latitude?.toFixed(3)}, ${poi.longitude?.toFixed(3)}`
-              : undefined;
+        hotel.photo_urls && hotel.photo_urls.length > 0
+          ? hotel.photo_urls[0]
+          : poi?.photo_urls && poi.photo_urls.length > 0
+            ? poi.photo_urls[0]
+            : undefined;
+      const hasAddress =
+        hotel.address && hotel.address.trim().length > 0 && hotel.address.toLowerCase() !== "address not available";
+      const address = hasAddress
+        ? hotel.address
+        : poi?.description && poi.description.trim().length > 0
+          ? poi.description
+          : poi?.latitude !== undefined && poi.longitude !== undefined
+            ? `${poi.latitude?.toFixed(3)}, ${poi.longitude?.toFixed(3)}`
+            : undefined;
+      const description =
+        hotel.description && hotel.description.trim().length > 0
+          ? hotel.description
+          : poi?.description;
+      const rating =
+        typeof hotel.rating === "number" && !Number.isNaN(hotel.rating)
+          ? hotel.rating
+          : typeof poi?.rating === "number"
+            ? poi.rating
+            : undefined;
+      const reviewCount =
+        typeof hotel.user_ratings_total === "number"
+          ? hotel.user_ratings_total
+          : poi?.user_ratings_total ?? (poi?.reviews ? poi.reviews.length : undefined);
+      const latitude =
+        typeof hotel.latitude === "number" ? hotel.latitude : poi?.latitude;
+      const longitude =
+        typeof hotel.longitude === "number" ? hotel.longitude : poi?.longitude;
+      const reviews =
+        hotel.reviews && hotel.reviews.length > 0
+          ? hotel.reviews
+          : poi?.reviews;
       pushCard({
         name: hotel.name,
         image,
         address,
-        description: poi?.description,
+        description,
         nightlyRate: hotel.nightly_rate,
         currency: hotel.currency ?? "USD",
-        rating: poi?.rating,
-        reviewCount:
-          poi?.user_ratings_total ?? (poi?.reviews ? poi.reviews.length : undefined),
-        latitude: poi?.latitude,
-        longitude: poi?.longitude,
+        rating,
+        reviewCount,
+        latitude,
+        longitude,
         sustainabilityScore: hotel.sustainability_score ?? undefined,
         emissionsKg: hotel.emissions_kg ?? undefined,
         bookingUrl: hotel.booking_url ?? undefined,
+        reviews,
         source: "lodging",
       });
     });
@@ -571,7 +682,7 @@ export default function Results() {
           image:
             poi.photo_urls && poi.photo_urls.length > 0
               ? poi.photo_urls[0]
-              : `https://source.unsplash.com/featured/?boutique,hotel&sig=${Math.random()}`,
+              : undefined,
           address:
             poi.description && poi.description.trim().length > 0
               ? poi.description
@@ -590,6 +701,7 @@ export default function Results() {
           emissionsKg: undefined,
           bookingUrl: undefined,
           source: "poi",
+          reviews: poi.reviews,
         });
       });
     }
@@ -894,9 +1006,9 @@ export default function Results() {
           <button
             onClick={() => router.push("/")}
               className="text-2xl font-bold text-[#0b3d2e] transition hover:text-[#2d6a4f]"
-            >
+          >
               GreenTrip
-            </button>
+          </button>
             <div className="flex items-center gap-3">
               {user && (
                 <>
@@ -978,7 +1090,7 @@ export default function Results() {
         {confirmedCabinData && (
           <div className="mb-20 rounded-2xl border border-white/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
+            <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Selected Flight</p>
                 <p className="mt-1 text-xl font-semibold text-[#0b3d2e]">
                   {confirmedCabinData.group.origin} → {confirmedCabinData.group.destination}
@@ -987,8 +1099,8 @@ export default function Results() {
                   {formatDateTime(confirmedCabinData.group.departure)} —{" "}
                   {formatDateTime(confirmedCabinData.group.arrival)} ·{" "}
                   {formatDurationLabel(confirmedCabinData.group.departure, confirmedCabinData.group.arrival)}
-                </p>
-              </div>
+              </p>
+            </div>
               <div className="text-right">
                 <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Cabin</p>
                 <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
@@ -1079,7 +1191,7 @@ export default function Results() {
             key={flight.groupId}
             className="flight-card rounded-2xl border border-white/10 bg-white/60 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-lg"
           >
-            <button
+              <button
               onClick={() => setExpandedFlightId(isExpanded ? null : flight.groupId)}
               className="w-full text-left"
             >
@@ -1092,14 +1204,14 @@ export default function Results() {
                     <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-xs">
                       {flight.cabins.length} cabin{flight.cabins.length > 1 ? "s" : ""}
                     </span>
-                  </div>
+            </div>
                   <p className="mt-1 text-xs text-emerald-600/80">
                     {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)} · {durationText}
                   </p>
                   <p className="mt-1 text-xs text-emerald-600/80">
                     Operated by {flight.carrier}
                   </p>
-                </div>
+          </div>
                 <div className="text-right">
                   <p className="text-sm uppercase tracking-[0.2em] text-emerald-500">From</p>
                   <p className="text-xl font-semibold text-[#0b3d2e]">
@@ -1113,7 +1225,7 @@ export default function Results() {
                       {flight.lowestEmissions.toFixed(1)} kg CO₂ (best cabin)
                     </p>
                   )}
-                </div>
+        </div>
               </div>
             </button>
 
@@ -1152,8 +1264,8 @@ export default function Results() {
                             {cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
                               ? `${cabin.emissionsKg.toFixed(1)} kg CO₂`
                               : "Emission estimate unavailable"}
-                          </p>
-                        </div>
+            </p>
+          </div>
                         <div className="flex flex-col items-start justify-center text-emerald-700">
                           {showCredits ? (
                             <>
@@ -1178,7 +1290,7 @@ export default function Results() {
                           {isSelected && (
                             <span className="text-xs font-medium text-emerald-600">Selected</span>
                           )}
-                        </div>
+          </div>
                       </button>
                     );
                   })}
@@ -1268,15 +1380,88 @@ export default function Results() {
                           )}
                         </p>
                       )}
-                    </div>
-                    {hotel.address && (
-                      <p className="text-sm text-emerald-700/80">{hotel.address}</p>
-                    )}
-                    {hotel.description && (
-                      <p className="text-sm text-emerald-800/80 leading-relaxed line-clamp-4">
-                        {hotel.description}
-                      </p>
-                    )}
+          </div>
+                    {(() => {
+                      const rawAddress = hotel.address?.trim();
+                      const displayAddress =
+                        rawAddress && rawAddress.length > 0 && rawAddress.toLowerCase() !== "address not available"
+                          ? rawAddress
+                          : undefined;
+                      const addressText = displayAddress ?? "Address not available";
+                      const trimmedDescription = hotel.description?.trim();
+                      const displayDescription =
+                        trimmedDescription && trimmedDescription.length > 0 && trimmedDescription !== displayAddress
+                          ? trimmedDescription
+                          : undefined;
+                      const stateKey = normalizedHotelKey(hotel.name);
+                      const reviewCount = hotel.reviews?.length ?? 0;
+                      const reviewState = hotelReviewStates[stateKey] ?? { open: false, index: 0 };
+                      const currentReview =
+                        reviewCount > 0 ? hotel.reviews![reviewState.index % reviewCount] : null;
+
+                      return (
+                        <>
+                          <p className="text-sm text-emerald-700/80">{addressText}</p>
+                          {displayDescription && (
+                            <p className="text-sm text-emerald-800/80 leading-relaxed line-clamp-4">
+                              {displayDescription}
+                            </p>
+                          )}
+                          {reviewCount > 0 && (
+                            <div className="space-y-2 text-xs text-emerald-800/80">
+                              <button
+                                type="button"
+                                onClick={() => toggleHotelReviews(hotel.name, reviewCount)}
+                                className="rounded-full border border-emerald-200 px-3 py-1 text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                              >
+                                {reviewState.open ? "Hide reviews" : "Show reviews"}
+                              </button>
+                              {reviewState.open && currentReview && (
+                                <div className="rounded-xl border border-emerald-50 bg-emerald-50/60 p-3">
+                                  <div className="mb-1 flex items-center justify-between font-semibold text-emerald-700">
+                                    <span>{currentReview.author || "Traveler"}</span>
+                                    {typeof currentReview.rating === "number" && (
+                                      <span className="text-emerald-600">
+                                        {currentReview.rating.toFixed(1)}★
+                                      </span>
+                                    )}
+                                  </div>
+                                  {currentReview.text && (
+                                    <p className="text-[13px] leading-relaxed text-emerald-700">
+                                      {currentReview.text}
+                                    </p>
+                                  )}
+                                  {currentReview.relative_time_description && (
+                                    <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-emerald-500">
+                                      {currentReview.relative_time_description}
+                                    </p>
+                                  )}
+                                  <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-emerald-600">
+                                    <button
+                                      type="button"
+                                      onClick={() => cycleHotelReview(hotel.name, reviewCount, -1)}
+                                      className="rounded-full border border-emerald-200 px-2 py-1 transition hover:border-emerald-300"
+                                    >
+                                      ‹ Prev
+                                    </button>
+                                    <span>
+                                      Review {reviewState.index + 1}/{reviewCount}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => cycleHotelReview(hotel.name, reviewCount, 1)}
+                                      className="rounded-full border border-emerald-200 px-2 py-1 transition hover:border-emerald-300"
+                                    >
+                                      Next ›
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="space-y-2 text-sm text-emerald-700/80">
                       {hotel.nightlyRate !== undefined && (
                         <p>
@@ -1295,7 +1480,7 @@ export default function Results() {
                       {hotel.emissionsKg !== undefined && (
                         <p>Estimated emissions: {hotel.emissionsKg.toFixed(1)} kg / night</p>
                       )}
-                    </div>
+        </div>
                     <div className="flex flex-wrap gap-2 text-xs">
                       {hotel.latitude !== undefined && hotel.longitude !== undefined && (
                         <Link
@@ -1478,13 +1663,13 @@ export default function Results() {
                   </li>
                 ))}
               </ul>
-            </div>
+          </div>
             <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm">
               <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Suggested Outfit</h4>
               <p className="text-sm text-emerald-800/80 leading-relaxed">
                 {generateOutfitSuggestions(currentDay, currentWeather)}
               </p>
-          </div>
+        </div>
           </div>
         </section>
 
@@ -1523,6 +1708,10 @@ export default function Results() {
                     (reviewCount
                       ? (attraction.reviews || []).reduce((sum, r) => sum + (r.rating || 0), 0) / reviewCount
                       : undefined);
+                  const stateKey = normalizedExploreKey(attraction.name);
+                  const reviewState = exploreReviewStates[stateKey] ?? { open: false, index: 0 };
+                  const currentReview =
+                    reviewCount > 0 ? attraction.reviews![reviewState.index % reviewCount] : null;
 
                   return (
                     <div
@@ -1541,7 +1730,7 @@ export default function Results() {
                       ) : (
                         <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 text-xs text-emerald-600/80">
                           Photo preview available
-          </div>
+                        </div>
                       )}
                       {averageRating !== undefined && (
                         <div className="mb-3 flex items-center justify-between text-sm">
@@ -1553,35 +1742,60 @@ export default function Results() {
                               {attraction.user_ratings_total.toLocaleString()} reviews
                             </span>
                           )}
-          </div>
+                        </div>
                       )}
                       {attraction.description && (
                         <p className="mb-3 text-xs text-emerald-800/80 leading-relaxed">{attraction.description}</p>
                       )}
-                      {attraction.reviews && attraction.reviews.length > 0 && (
-                        <div className="space-y-2">
-                          {attraction.reviews.slice(0, 2).map((review, reviewIdx) => (
-                            <div
-                              key={reviewIdx}
-                              className="rounded-xl border border-emerald-50 bg-emerald-50/50 p-3 text-xs text-emerald-800"
-                            >
-                              <div className="mb-1 flex items-center justify-between font-semibold">
-                                <span>{review.author || "Traveler"}</span>
-                                {typeof review.rating === "number" && (
-                                  <span className="text-emerald-600">{review.rating.toFixed(1)}★</span>
+                      {reviewCount > 0 && (
+                        <div className="space-y-2 text-xs text-emerald-800/80">
+                          <button
+                            type="button"
+                            onClick={() => toggleExploreReviews(attraction.name, reviewCount)}
+                            className="rounded-full border border-emerald-200 px-3 py-1 text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                          >
+                            {reviewState.open ? "Hide reviews" : "Show reviews"}
+                          </button>
+                          {reviewState.open && currentReview && (
+                            <div className="rounded-xl border border-emerald-50 bg-emerald-50/60 p-3">
+                              <div className="mb-1 flex items-center justify-between font-semibold text-emerald-700">
+                                <span>{currentReview.author || "Traveler"}</span>
+                                {typeof currentReview.rating === "number" && (
+                                  <span className="text-emerald-600">{currentReview.rating.toFixed(1)}★</span>
                                 )}
                               </div>
-                              {review.text && <p className="mt-1 leading-relaxed">{review.text}</p>}
-                              {review.relative_time_description && (
-                                <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-emerald-500">
-                                  {review.relative_time_description}
+                              {currentReview.text && (
+                                <p className="text-[13px] leading-relaxed text-emerald-700">{currentReview.text}</p>
+                              )}
+                              {currentReview.relative_time_description && (
+                                <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-emerald-500">
+                                  {currentReview.relative_time_description}
                                 </p>
                               )}
-                  </div>
-                          ))}
-                  </div>
+                              <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-emerald-600">
+                                <button
+                                  type="button"
+                                  onClick={() => cycleExploreReview(attraction.name, reviewCount, -1)}
+                                  className="rounded-full border border-emerald-200 px-2 py-1 transition hover:border-emerald-300"
+                                >
+                                  ‹ Prev
+                                </button>
+                                <span>
+                                  Review {reviewState.index + 1}/{reviewCount}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => cycleExploreReview(attraction.name, reviewCount, 1)}
+                                  className="rounded-full border border-emerald-200 px-2 py-1 transition hover:border-emerald-300"
+                                >
+                                  Next ›
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
-                  </div>
+                    </div>
                   );
                 })
               ) : (
@@ -1604,7 +1818,7 @@ export default function Results() {
             tripId={saved ? savedTripId : undefined}
             collaboratorId={(itinerary as any)?.collaborator_id}
           />
-        </div>
+    </div>
       )}
 
       {/* Share Trip Modal */}
