@@ -139,6 +139,20 @@ interface DayAttractionBundle {
   evening?: PointOfInterest;
 }
 
+interface TripRequestSnapshot {
+  origin?: string;
+  destination?: string;
+  start_date?: string;
+  end_date?: string;
+  num_days?: number;
+  budget?: number;
+  mode?: string;
+  preferences?: string[];
+  likes?: string[];
+  dislikes?: string[];
+  dietary_restrictions?: string[];
+}
+
 interface ItineraryResponse {
   destination: string;
   start_date?: string;
@@ -159,6 +173,7 @@ interface ItineraryResponse {
   day_attractions?: DayAttractionBundle[];
   hotels?: LodgingOption[];
   preferences?: string[]; // User's selected preferences
+  original_request?: TripRequestSnapshot;
 }
 
 const HOTEL_IMAGE_DEFAULT =
@@ -393,19 +408,33 @@ export default function Results() {
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
-    const storedRequest = sessionStorage.getItem("tripRequest"); // Get preferences from request
+    let storedRequest = sessionStorage.getItem("tripRequest"); // Get preferences from request
     const collaboratorId = sessionStorage.getItem("collaborator_id"); // Get collaborator ID for shared trips
     const storedTripId = sessionStorage.getItem("savedTripId"); // Check if trip ID is stored
     if (stored) {
       const parsed: ItineraryResponse = JSON.parse(stored);
+      const originalRequest = (parsed as any)?.original_request as TripRequestSnapshot | undefined;
+
+      if (!storedRequest && originalRequest) {
+        try {
+          sessionStorage.setItem("tripRequest", JSON.stringify(originalRequest));
+          storedRequest = JSON.stringify(originalRequest);
+        } catch (err) {
+          console.warn("Failed to persist original_request snapshot to storage:", err);
+        }
+      }
       
       // If preferences aren't in itinerary, try to get them from stored request
-      if (!parsed.preferences && storedRequest) {
-        try {
-          const requestData = JSON.parse(storedRequest);
-          parsed.preferences = requestData.preferences || [];
-        } catch (e) {
-          // Ignore parse errors
+      if (!parsed.preferences) {
+        if (originalRequest?.preferences && originalRequest.preferences.length > 0) {
+          parsed.preferences = originalRequest.preferences;
+        } else if (storedRequest) {
+          try {
+            const requestData = JSON.parse(storedRequest);
+            parsed.preferences = requestData.preferences || [];
+          } catch (e) {
+            // Ignore parse errors
+          }
         }
       }
       
@@ -935,7 +964,57 @@ export default function Results() {
       const userId = String(user.id).trim();
       
       console.log("Saving trip with user_id:", userId, "type:", typeof user.id, "raw:", user.id);
-      
+
+      const storedRequestRaw = sessionStorage.getItem("tripRequest");
+      const existingRequest = (itinerary as any)?.original_request as TripRequestSnapshot | undefined;
+      const ensureStringArray = (value: any): string[] =>
+        Array.isArray(value)
+          ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          : [];
+
+      let requestSnapshot: TripRequestSnapshot | undefined = existingRequest ? { ...existingRequest } : undefined;
+
+      if (storedRequestRaw) {
+        try {
+          const parsedSnapshot = JSON.parse(storedRequestRaw);
+          requestSnapshot = {
+            ...(requestSnapshot ?? {}),
+            ...parsedSnapshot,
+          };
+        } catch (err) {
+          console.warn("Unable to parse stored tripRequest snapshot:", err);
+        }
+      }
+
+      const finalizedSnapshot: TripRequestSnapshot = {
+        origin: requestSnapshot?.origin ?? (itinerary as any)?.origin ?? undefined,
+        destination: requestSnapshot?.destination ?? itinerary.destination,
+        start_date: requestSnapshot?.start_date ?? itinerary.start_date ?? undefined,
+        end_date: requestSnapshot?.end_date ?? itinerary.end_date ?? undefined,
+        num_days:
+          typeof requestSnapshot?.num_days === "number" && !Number.isNaN(requestSnapshot.num_days)
+            ? requestSnapshot.num_days
+            : itinerary.num_days,
+        budget:
+          typeof requestSnapshot?.budget === "number" && !Number.isNaN(requestSnapshot.budget)
+            ? requestSnapshot.budget
+            : itinerary.budget,
+        mode: requestSnapshot?.mode ?? itinerary.mode,
+        preferences: ensureStringArray(requestSnapshot?.preferences ?? itinerary.preferences),
+        likes: ensureStringArray(requestSnapshot?.likes),
+        dislikes: ensureStringArray(requestSnapshot?.dislikes),
+        dietary_restrictions: ensureStringArray(requestSnapshot?.dietary_restrictions),
+      };
+
+      const itineraryPayload: ItineraryResponse = {
+        ...itinerary,
+        original_request: finalizedSnapshot,
+      };
+
+      sessionStorage.setItem("itinerary", JSON.stringify(itineraryPayload));
+      sessionStorage.setItem("tripRequest", JSON.stringify(finalizedSnapshot));
+      setItinerary(itineraryPayload);
+
       let data: any;
       let error: any;
       
@@ -952,7 +1031,7 @@ export default function Results() {
             num_days: itinerary.num_days,
             budget: itinerary.budget,
             mode: itinerary.mode,
-            itinerary_data: itinerary,
+            itinerary_data: itineraryPayload,
           })
           .eq("id", savedTripId)
           .eq("user_id", userId) // Ensure user owns the trip
@@ -975,7 +1054,7 @@ export default function Results() {
               num_days: itinerary.num_days,
               budget: itinerary.budget,
               mode: itinerary.mode,
-              itinerary_data: itinerary,
+              itinerary_data: itineraryPayload,
             })
             .select()
             .single();
@@ -1001,7 +1080,7 @@ export default function Results() {
             num_days: itinerary.num_days,
             budget: itinerary.budget,
             mode: itinerary.mode,
-            itinerary_data: itinerary,
+            itinerary_data: itineraryPayload,
           })
           .select()
           .single();
@@ -1319,6 +1398,7 @@ export default function Results() {
         duration: 1,
         delay,
         ease: "power2.out",
+        immediateRender: false,
         scrollTrigger: {
           trigger: target,
           start: "top 80%",
@@ -1341,6 +1421,7 @@ export default function Results() {
         y: 40,
         duration: 1.2,
         delay: i * 0.1,
+        immediateRender: false,
         scrollTrigger: {
           trigger: el,
           start: "top 90%",
@@ -1356,6 +1437,7 @@ export default function Results() {
         x: 80,
         duration: 1,
         delay: i * 0.1,
+        immediateRender: false,
         scrollTrigger: {
           trigger: el,
           start: "top 85%",
@@ -1371,6 +1453,7 @@ export default function Results() {
         y: 60,
         duration: 1.2,
         delay: i * 0.15,
+        immediateRender: false,
         scrollTrigger: {
           trigger: el,
           start: "top 85%",
@@ -1378,6 +1461,8 @@ export default function Results() {
         },
       });
     });
+
+    ScrollTrigger.refresh();
 
     return () => {
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
@@ -1506,6 +1591,16 @@ export default function Results() {
       return expandedFlight.cabins[0].id;
     });
   }, [expandedFlight]);
+
+  const hasAutoExpandedFlight = useRef(false);
+
+  useEffect(() => {
+    if (hasAutoExpandedFlight.current) return;
+    if (!expandedFlightId && groupedFlights.length > 0) {
+      setExpandedFlightId(groupedFlights[0].groupId);
+      hasAutoExpandedFlight.current = true;
+    }
+  }, [expandedFlightId, groupedFlights]);
 
   const findCabinById = useMemo(() => {
     const map = new Map<string, { cabin: FlightCabinOption; group: FlightGroup; maxEmission: number }>();
@@ -2031,15 +2126,10 @@ export default function Results() {
                       isExpanded
                         ? "ring-2 ring-emerald-200 shadow-lg"
                         : expandedFlightId && !isExpanded
-                          ? "pointer-events-none -translate-x-4 scale-95 opacity-0"
+                          ? "-translate-x-1 scale-95 opacity-70"
                           : "hover:shadow-lg"
-                    } ${isExpanded ? "p-6" : expandedFlightId && !isExpanded ? "p-0" : "p-6"}`}
-                    style={{
-                      width:
-                        expandedFlightId && !isExpanded
-                          ? 0
-                          : 320,
-                    }}
+                    } ${isExpanded ? "p-6" : "p-6"}`}
+                    style={{ width: 320 }}
                   >
             <button
               onClick={() => setExpandedFlightId(isExpanded ? null : flight.groupId)}

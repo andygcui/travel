@@ -994,7 +994,72 @@ export default function Dashboard() {
   };
 
   const handleViewTrip = (trip: SavedTrip | SharedTrip) => {
-    sessionStorage.setItem("itinerary", JSON.stringify(trip.itinerary_data));
+    const itineraryData: any = trip.itinerary_data;
+
+    if (itineraryData) {
+      sessionStorage.setItem("itinerary", JSON.stringify(itineraryData));
+
+      const originalRequest = itineraryData.original_request;
+      if (originalRequest) {
+        try {
+          sessionStorage.setItem("tripRequest", JSON.stringify(originalRequest));
+        } catch (err) {
+          console.warn("Unable to persist original_request snapshot from saved trip:", err);
+          sessionStorage.removeItem("tripRequest");
+        }
+      } else {
+        const ensureArray = (value: any): string[] =>
+          Array.isArray(value)
+            ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            : [];
+
+        const fallbackRequest = {
+          origin: itineraryData.origin ?? undefined,
+          destination: itineraryData.destination ?? trip.destination ?? undefined,
+          start_date: itineraryData.start_date ?? trip.start_date ?? undefined,
+          end_date: itineraryData.end_date ?? trip.end_date ?? undefined,
+          num_days:
+            typeof itineraryData.num_days === "number"
+              ? itineraryData.num_days
+              : typeof trip.num_days === "number"
+                ? trip.num_days
+                : undefined,
+          budget:
+            typeof itineraryData.budget === "number"
+              ? itineraryData.budget
+              : typeof trip.budget === "number"
+                ? trip.budget
+                : undefined,
+          mode: itineraryData.mode ?? trip.mode ?? undefined,
+          preferences: ensureArray(itineraryData.preferences),
+          likes: ensureArray(itineraryData.likes),
+          dislikes: ensureArray(itineraryData.dislikes),
+          dietary_restrictions: ensureArray(itineraryData.dietary_restrictions),
+        };
+
+        const hasRequestData =
+          Boolean(fallbackRequest.destination) ||
+          Boolean(fallbackRequest.start_date) ||
+          Boolean(fallbackRequest.end_date) ||
+          typeof fallbackRequest.num_days === "number" ||
+          typeof fallbackRequest.budget === "number" ||
+          Boolean(fallbackRequest.mode) ||
+          fallbackRequest.preferences.length > 0 ||
+          fallbackRequest.likes.length > 0 ||
+          fallbackRequest.dislikes.length > 0 ||
+          fallbackRequest.dietary_restrictions.length > 0;
+
+        if (hasRequestData) {
+          sessionStorage.setItem("tripRequest", JSON.stringify(fallbackRequest));
+        } else {
+          sessionStorage.removeItem("tripRequest");
+        }
+      }
+    } else {
+      sessionStorage.removeItem("itinerary");
+      sessionStorage.removeItem("tripRequest");
+    }
+
     // Store trip ID so results page knows it's a saved trip
     const tripId = "trip_id" in trip ? trip.trip_id : trip.id;
     if (tripId) {
