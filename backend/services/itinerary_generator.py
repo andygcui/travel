@@ -94,7 +94,11 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         origin_code = "JFK"  # Fallback to JFK
     
     # Convert destination city name to airport code for Amadeus
-    destination_code = airport_code_resolver.resolve_airport_code(request.destination)
+    destination_code = airport_code_resolver.resolve_airport_code(
+        request.destination,
+        latitude=latitude,
+        longitude=longitude,
+    )
     if not destination_code:
         logger.warning(f"Could not resolve airport code for '{request.destination}', will use city name (may fail)")
         destination_code = request.destination
