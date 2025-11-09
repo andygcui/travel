@@ -136,28 +136,10 @@ export default function Home() {
     }
   };
 
-  const saveUserPreferences = async () => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('user_preferences')
-        .upsert({
-          user_id: user.id,
-          likes,
-          dislikes,
-          dietary_restrictions: dietaryRestrictions,
-          preferences,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error saving preferences:', err);
-    }
-  };
+  // REMOVED: saveUserPreferences function
+  // Preferences from the trip planning form should NOT be saved to user_preferences table
+  // They are only used for the current trip query, not as permanent user preferences
+  // User preferences should only be set during registration or through the edit preferences modal
 
   const handleAuthSuccess = async () => {
     // Get the current session after authentication
@@ -210,7 +192,7 @@ export default function Home() {
         : [...prev, pref];
       // Save preferences if user is logged in
       if (user) {
-        setTimeout(() => saveUserPreferences(), 100);
+        // REMOVED: saveUserPreferences() - preferences from trip form should NOT be saved
       }
       return newPrefs;
     });
@@ -480,7 +462,7 @@ export default function Home() {
                             ? dietaryRestrictions.filter((d) => d !== diet)
                             : [...dietaryRestrictions, diet];
                           setDietaryRestrictions(newRestrictions);
-                          saveUserPreferences();
+                          // REMOVED: saveUserPreferences() - preferences from trip form should NOT be saved
                         }}
                         className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                           dietaryRestrictions.includes(diet)

@@ -56,13 +56,48 @@ async def generate_user_profile_summary(user_id: str) -> str:
             user_prefs = user_prefs_response.data[0]
             logger.info(f"User preferences: interests={user_prefs.get('preferences', [])}, likes={user_prefs.get('likes', [])}, dislikes={user_prefs.get('dislikes', [])}, dietary={user_prefs.get('dietary_restrictions', [])}")
         
-        # Combine all preferences
+        # Combine all preferences with deduplication
         all_preferences = []
+        seen_preferences = set()  # Track seen preferences (case-insensitive, normalized)
+        
+        def normalize_preference_value(value: str) -> str:
+            """Normalize preference value for comparison (lowercase, trimmed)"""
+            if not value:
+                return ""
+            return value.strip().lower()
+        
+        def add_preference_if_unique(pref_dict: Dict[str, Any]) -> None:
+            """Add preference only if it's not a duplicate (case-insensitive)"""
+            value = pref_dict.get("value", "")
+            if not value:
+                return
+            
+            normalized_value = normalize_preference_value(value)
+            category = pref_dict.get("category", "").lower()
+            
+            # Create a unique key: category + normalized value
+            unique_key = f"{category}:{normalized_value}"
+            
+            if unique_key not in seen_preferences:
+                seen_preferences.add(unique_key)
+                all_preferences.append(pref_dict)
+            else:
+                # If duplicate found, update frequency if this one has higher frequency
+                for existing_pref in all_preferences:
+                    if (normalize_preference_value(existing_pref.get("value", "")) == normalized_value and
+                        existing_pref.get("category", "").lower() == category):
+                        # Update frequency to the maximum
+                        existing_pref["frequency"] = max(
+                            existing_pref.get("frequency", 1),
+                            pref_dict.get("frequency", 1)
+                        )
+                        logger.info(f"Deduplicated preference: {value} (keeping existing with frequency {existing_pref['frequency']})")
+                        break
         
         # Add long-term chat preferences
         if long_term_response.data:
             for pref in long_term_response.data:
-                all_preferences.append({
+                add_preference_if_unique({
                     "type": "long_term",
                     "category": pref.get("preference_category"),
                     "value": pref.get("preference_value"),
@@ -72,7 +107,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
         # Add frequent trip-specific preferences
         if frequent_trip_prefs_response.data:
             for pref in frequent_trip_prefs_response.data:
-                all_preferences.append({
+                add_preference_if_unique({
                     "type": "frequent_trip",
                     "category": pref.get("preference_category"),
                     "value": pref.get("preference_value"),
@@ -82,7 +117,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
         # Add temporal preferences
         if temporal_prefs_response.data:
             for pref in temporal_prefs_response.data:
-                all_preferences.append({
+                add_preference_if_unique({
                     "type": "temporal",
                     "category": pref.get("preference_category"),
                     "value": pref.get("preference_value"),
@@ -96,7 +131,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
             # Add interests/preferences
             if user_prefs.get("preferences"):
                 for pref in user_prefs["preferences"]:
-                    all_preferences.append({
+                    add_preference_if_unique({
                         "type": "long_term",
                         "category": "activity",
                         "value": pref,
@@ -106,7 +141,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
             # Add dietary restrictions
             if user_prefs.get("dietary_restrictions"):
                 for restriction in user_prefs["dietary_restrictions"]:
-                    all_preferences.append({
+                    add_preference_if_unique({
                         "type": "long_term",
                         "category": "dietary",
                         "value": restriction,
@@ -116,7 +151,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
             # Add likes
             if user_prefs.get("likes"):
                 for like in user_prefs["likes"]:
-                    all_preferences.append({
+                    add_preference_if_unique({
                         "type": "long_term",
                         "category": "activity",
                         "value": like,
@@ -126,7 +161,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
             # Add dislikes
             if user_prefs.get("dislikes"):
                 for dislike in user_prefs["dislikes"]:
-                    all_preferences.append({
+                    add_preference_if_unique({
                         "type": "long_term",
                         "category": "activity",
                         "value": f"avoid {dislike}",
