@@ -293,11 +293,23 @@ export default function Results() {
   }, [friends]);
 
   // Load trip status when savedTripId changes
+  // Only verify if saved=true is already set (meaning it was saved in this session)
+  // Don't auto-verify for new trips from home page
   useEffect(() => {
     if (savedTripId && user) {
+      // Only verify if we already think it's saved (from clicking save button)
+      // This prevents auto-saving new trips from home page
+      if (saved) {
+        verifyTripIsSaved(savedTripId, user.id).then((isSaved) => {
+          if (!isSaved) {
+            // If verification fails, reset saved state
+            setSaved(false);
+          }
+        });
+      }
       loadTripStatus(savedTripId);
     }
-  }, [savedTripId, user]);
+  }, [savedTripId, user, saved]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharingTrip, setSharingTrip] = useState(false);
   const [hotelReviewStates, setHotelReviewStates] = useState<
@@ -402,10 +414,12 @@ export default function Results() {
       }
       
       // Check if trip has an ID (from saved trip) or if storedTripId exists
+      // Only set savedTripId if it exists, but don't set saved=true automatically
+      // The saved state will be verified later when user is loaded
       if (storedTripId || (parsed as any).trip_id || (parsed as any).id) {
         const tripId = storedTripId || (parsed as any).trip_id || (parsed as any).id;
         setSavedTripId(tripId);
-        setSaved(true);
+        // Don't set saved=true here - it will be verified when user loads
       }
       
       setItinerary(parsed);
@@ -415,36 +429,65 @@ export default function Results() {
       router.push("/");
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
-        if (savedTripId || storedTripId) {
-          const tripId = savedTripId || storedTripId;
-          loadTripStatus(tripId);
-        } else if (stored) {
-          const parsed: ItineraryResponse = JSON.parse(stored);
-          const tripId = (parsed as any)?.trip_id || (parsed as any)?.id;
-          if (tripId) {
-            loadTripStatus(tripId);
+        const tripId = savedTripId || storedTripId || (stored ? (() => {
+          try {
+            const parsed: ItineraryResponse = JSON.parse(stored);
+            return (parsed as any)?.trip_id || (parsed as any)?.id;
+          } catch {
+            return null;
           }
+        })() : null);
+        
+        if (tripId) {
+          // Only verify if tripId came from storedTripId (from dashboard), not from itinerary data
+          // If it came from storedTripId, it means it's a saved trip from dashboard
+          // If it came from itinerary data, it's a new trip that shouldn't be auto-saved
+          if (storedTripId) {
+            // This is a trip from dashboard - verify it's saved
+            const isSaved = await verifyTripIsSaved(tripId, session.user.id);
+            if (isSaved) {
+              setSaved(true);
+              setSavedTripId(tripId);
+            }
+          }
+          // Always load trip status if tripId exists
+          loadTripStatus(tripId);
         }
       }
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
-        if (savedTripId || storedTripId) {
-          const tripId = savedTripId || storedTripId;
-          loadTripStatus(tripId);
-        } else if (stored) {
-          const parsed: ItineraryResponse = JSON.parse(stored);
-          const tripId = (parsed as any)?.trip_id || (parsed as any)?.id;
-          if (tripId) {
-            loadTripStatus(tripId);
+        const storedTripId = sessionStorage.getItem("savedTripId");
+        const tripId = savedTripId || storedTripId || (stored ? (() => {
+          try {
+            const parsed: ItineraryResponse = JSON.parse(stored);
+            return (parsed as any)?.trip_id || (parsed as any)?.id;
+          } catch {
+            return null;
           }
+        })() : null);
+        
+        if (tripId) {
+          // Only verify if tripId came from storedTripId (from dashboard), not from itinerary data
+          // If it came from storedTripId, it means it's a saved trip from dashboard
+          // If it came from itinerary data, it's a new trip that shouldn't be auto-saved
+          if (storedTripId) {
+            // This is a trip from dashboard - verify it's saved
+            const isSaved = await verifyTripIsSaved(tripId, session.user.id);
+            if (isSaved) {
+              setSaved(true);
+              setSavedTripId(tripId);
+            }
+          }
+          // Always load trip status if tripId exists
+          loadTripStatus(tripId);
         }
       }
     });
@@ -499,6 +542,34 @@ export default function Results() {
     }
   };
 
+  const verifyTripIsSaved = async (tripId: string, userId: string) => {
+    if (!tripId || !userId) return false;
+    try {
+      const { data, error } = await supabase
+        .from("saved_trips")
+        .select("id, user_id")
+        .eq("id", tripId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error verifying trip:", error);
+        return false;
+      }
+
+      // If trip exists and belongs to user, it's saved
+      if (data && data.id) {
+        console.log("Trip verified as saved:", tripId);
+        return true;
+      }
+
+      return false;
+    } catch (err: any) {
+      console.error("Error verifying trip:", err);
+      return false;
+    }
+  };
+
   const handleUpdateTripStatus = async (newStatus: "draft" | "before" | "during" | "after") => {
     if (!user || !savedTripId) {
       alert("Please save the trip first before updating its status.");
@@ -520,6 +591,44 @@ export default function Results() {
 
     setUpdatingStatus(true);
     try {
+      // First, verify the trip exists and belongs to the current user
+      const { data: tripData, error: tripError } = await supabase
+        .from("saved_trips")
+        .select("user_id, id")
+        .eq("id", savedTripId)
+        .maybeSingle();
+
+      if (tripError) {
+        console.error("Error verifying trip:", tripError);
+        // Continue anyway - backend will verify
+      } else if (tripData) {
+        const tripUserId = String(tripData.user_id).trim().toLowerCase();
+        const currentUserId = String(user.id).trim().toLowerCase();
+        
+        console.log("Trip ownership check (frontend):", {
+          trip_id: savedTripId,
+          trip_user_id: tripData.user_id,
+          trip_user_id_str: tripUserId,
+          current_user_id: user.id,
+          current_user_id_str: currentUserId,
+          match: tripUserId === currentUserId,
+          trip_user_id_type: typeof tripData.user_id,
+          current_user_id_type: typeof user.id,
+        });
+
+        if (tripUserId !== currentUserId) {
+          console.error("OWNERSHIP MISMATCH DETECTED:", {
+            trip_user_id: tripUserId,
+            current_user_id: currentUserId,
+            trip_user_id_raw: tripData.user_id,
+            current_user_id_raw: user.id,
+          });
+          throw new Error(`You don't have permission to update this trip. Trip belongs to ${tripUserId}, but you are ${currentUserId}`);
+        }
+      } else {
+        console.warn("Trip not found in frontend verification, but proceeding - backend will verify");
+      }
+
       // Get confirmed cabin data
       const confirmedCabin = confirmedCabinId ? findCabinById.get(confirmedCabinId) : null;
       
@@ -537,18 +646,32 @@ export default function Results() {
         }
       }
 
+      // Ensure user_id and trip_id are strings for consistency
+      const userId = String(user.id).trim();
+      const tripId = String(savedTripId).trim();
+
       console.log("Updating trip status:", {
-        trip_id: savedTripId,
-        user_id: user.id,
+        trip_id: tripId,
+        trip_id_type: typeof tripId,
+        user_id: userId,
+        user_id_type: typeof userId,
+        user_id_raw: user.id,
+        user_id_raw_type: typeof user.id,
+        savedTripId_original: savedTripId,
+        savedTripId_type: typeof savedTripId,
         status: newStatus,
       });
+
+      if (!tripId || tripId === "null" || tripId === "undefined") {
+        throw new Error("Invalid trip ID. Please save the trip first.");
+      }
 
       const response = await fetch("http://localhost:8000/trips/status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trip_id: savedTripId,
-          user_id: user.id,
+          trip_id: tripId,
+          user_id: userId,
           status: newStatus,
           selected_flight_id: confirmedCabinId || null,
           selected_flight_data: confirmedCabin?.cabin || null,
@@ -821,32 +944,110 @@ export default function Results() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from("saved_trips")
-        .insert({
-          user_id: user.id,
-          trip_name: tripName.trim(),
-          destination: itinerary.destination,
-          start_date: itinerary.start_date || null,
-          end_date: itinerary.end_date || null,
-          num_days: itinerary.num_days,
-          budget: itinerary.budget,
-          mode: itinerary.mode,
-          itinerary_data: itinerary,
-        })
-        .select()
-        .single();
+      // Ensure user_id is a string for consistency
+      const userId = String(user.id).trim();
+      
+      console.log("Saving trip with user_id:", userId, "type:", typeof user.id, "raw:", user.id);
+      
+      let data: any;
+      let error: any;
+      
+      // If trip already has an ID, update it instead of inserting
+      if (savedTripId) {
+        console.log("Updating existing trip:", savedTripId);
+        const result = await supabase
+          .from("saved_trips")
+          .update({
+            trip_name: tripName.trim(),
+            destination: itinerary.destination,
+            start_date: itinerary.start_date || null,
+            end_date: itinerary.end_date || null,
+            num_days: itinerary.num_days,
+            budget: itinerary.budget,
+            mode: itinerary.mode,
+            itinerary_data: itinerary,
+          })
+          .eq("id", savedTripId)
+          .eq("user_id", userId) // Ensure user owns the trip
+          .select();
+        
+        // Check if update found any rows
+        if (result.error) {
+          error = result.error;
+        } else if (!result.data || result.data.length === 0) {
+          // Trip not found or doesn't belong to user - treat as new trip
+          console.log("Trip not found or doesn't belong to user, creating new trip");
+          const insertResult = await supabase
+            .from("saved_trips")
+            .insert({
+              user_id: userId,
+              trip_name: tripName.trim(),
+              destination: itinerary.destination,
+              start_date: itinerary.start_date || null,
+              end_date: itinerary.end_date || null,
+              num_days: itinerary.num_days,
+              budget: itinerary.budget,
+              mode: itinerary.mode,
+              itinerary_data: itinerary,
+            })
+            .select()
+            .single();
+          
+          data = insertResult.data;
+          error = insertResult.error;
+        } else {
+          // Update successful
+          data = result.data[0];
+          error = null;
+        }
+      } else {
+        // New trip - insert
+        console.log("Creating new trip");
+        const result = await supabase
+          .from("saved_trips")
+          .insert({
+            user_id: userId,
+            trip_name: tripName.trim(),
+            destination: itinerary.destination,
+            start_date: itinerary.start_date || null,
+            end_date: itinerary.end_date || null,
+            num_days: itinerary.num_days,
+            budget: itinerary.budget,
+            mode: itinerary.mode,
+            itinerary_data: itinerary,
+          })
+          .select()
+          .single();
+        
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) throw error;
 
+      console.log("Trip saved successfully:", {
+        trip_id: data?.id,
+        saved_user_id: data?.user_id,
+        current_user_id: userId,
+        match: String(data?.user_id) === userId,
+        was_update: !!savedTripId,
+      });
+
       setSaved(true);
-      setSavedTripId(data?.id || null);
+      const newTripId = data?.id || savedTripId;
+      setSavedTripId(newTripId);
+      
+      // Store trip ID in sessionStorage so it persists
+      if (newTripId) {
+        sessionStorage.setItem("savedTripId", newTripId);
+      }
+      
       setShowSaveModal(false);
       // Load trip status after saving
-      if (data?.id) {
-        loadTripStatus(data.id);
+      if (newTripId) {
+        loadTripStatus(newTripId);
       }
-      setTimeout(() => setSaved(false), 3000);
+      // Don't reset saved state - keep it saved permanently after clicking save
     } catch (err: any) {
       alert(`Failed to save trip: ${err.message}`);
     } finally {
