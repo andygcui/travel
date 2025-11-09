@@ -46,12 +46,25 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
       const response = await fetch(`http://localhost:8000/user/username/check?username=${encodeURIComponent(usernameToCheck.trim())}`)
       if (response.ok) {
         const data = await response.json()
+        console.log('Username check response:', data)
         return data.available === true
+      } else {
+        // If response is not OK, try to parse error message
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Username check failed:', response.status, errorData)
+        // If it's a server error (500), assume username might be available (don't block registration)
+        // If it's a client error (400), assume username is taken
+        if (response.status >= 500) {
+          console.warn('Backend error during username check, allowing registration to proceed')
+          return true // Allow registration to proceed if backend error
+        }
+        return false
       }
-      return false
     } catch (err) {
       console.error('Error checking username:', err)
-      return false
+      // Network error - don't block registration, let backend handle it
+      console.warn('Network error during username check, allowing registration to proceed')
+      return true // Allow registration to proceed if network error
     } finally {
       setCheckingUsername(false)
     }
