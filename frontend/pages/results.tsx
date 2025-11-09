@@ -525,10 +525,23 @@ export default function Results() {
     (itinerary.hotels ?? []).forEach((hotel) => {
       if (!hotel.name) return;
       const poi = findPoiForHotel(hotel.name);
+      const fallbackImage = `https://source.unsplash.com/featured/?hotel,travel&sig=${Math.random()}`;
+      const image =
+        poi?.photo_urls && poi.photo_urls.length > 0
+          ? poi.photo_urls[0]
+          : fallbackImage;
+      const address =
+        hotel.address && hotel.address.trim().length > 0
+          ? hotel.address
+          : poi?.description && poi.description.trim().length > 0
+            ? poi.description
+            : poi?.latitude !== undefined && poi.longitude !== undefined
+              ? `${poi.latitude?.toFixed(3)}, ${poi.longitude?.toFixed(3)}`
+              : undefined;
       pushCard({
         name: hotel.name,
-        image: poi?.photo_urls?.[0],
-        address: hotel.address ?? poi?.description,
+        image,
+        address,
         description: poi?.description,
         nightlyRate: hotel.nightly_rate,
         currency: hotel.currency ?? "USD",
@@ -555,8 +568,16 @@ export default function Results() {
         if (!poi.name || !isHotelLike(poi)) return;
         pushCard({
           name: poi.name,
-          image: poi.photo_urls?.[0],
-          address: poi.description,
+          image:
+            poi.photo_urls && poi.photo_urls.length > 0
+              ? poi.photo_urls[0]
+              : `https://source.unsplash.com/featured/?boutique,hotel&sig=${Math.random()}`,
+          address:
+            poi.description && poi.description.trim().length > 0
+              ? poi.description
+              : poi.latitude !== undefined && poi.longitude !== undefined
+                ? `${poi.latitude.toFixed(3)}, ${poi.longitude.toFixed(3)}`
+                : undefined,
           description: poi.description,
           nightlyRate: undefined,
           currency: undefined,
