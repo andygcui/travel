@@ -1,3 +1,4 @@
+
 "use client";
 
 import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView, DirectionsService, DirectionsRenderer } from "@react-google-maps/api";
@@ -29,6 +30,13 @@ const ACCENT_DARK = "#1b4332"; // darker outline for contrast
 
 
 export default function ItineraryMap({ destination, attractions }: ItineraryMapProps) {
+  // Store total distances for walking and driving
+  const [walkingDistance, setWalkingDistance] = useState<number | null>(null);
+  const [drivingDistance, setDrivingDistance] = useState<number | null>(null);
+  // Store total durations for walking, walk+transit, and driving
+  const [walkingDuration, setWalkingDuration] = useState<string | null>(null);
+  const [drivingDuration, setDrivingDuration] = useState<string | null>(null);
+  const [walkTransitDuration, setWalkTransitDuration] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [activeMarker, setActiveMarker] = useState<Place | null>(null);
   const [details, setDetails] = useState<any>(null);
@@ -68,31 +76,57 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
     const destinationCoord = validCoords[validCoords.length - 1];
     const service = new window.google.maps.DirectionsService();
 
-    // Helper to request directions for a given mode
+    // Helper to sum up the total distance from a DirectionsResult
+    const getTotalDistance = (result: google.maps.DirectionsResult | null) => {
+      if (!result || !result.routes || !result.routes[0] || !result.routes[0].legs) return 0;
+      return result.routes[0].legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+    };
+
+    // Helper to sum up the total duration from a DirectionsResult (returns a string like '1 hr 5 min')
+    const getTotalDuration = (result: google.maps.DirectionsResult | null) => {
+      if (!result || !result.routes || !result.routes[0] || !result.routes[0].legs) return null;
+      const totalSeconds = result.routes[0].legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+      if (totalSeconds === 0) return null;
+      // Format as h m
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.round((totalSeconds % 3600) / 60);
+      let str = '';
+      if (hours > 0) str += `${hours} hr `;
+      if (minutes > 0 || hours === 0) str += `${minutes} min`;
+      return str.trim();
+    };
+
+    // Helper to request directions for a given mode, optimizing for time
     const requestDirections = (mode: 'WALKING' | 'TRANSIT' | 'DRIVING', cb: (result: google.maps.DirectionsResult | null, status: string) => void) => {
-      service.route(
-        {
-          origin,
-          destination: destinationCoord,
-          waypoints,
-          travelMode: window.google.maps.TravelMode[mode],
-          optimizeWaypoints: true,
-        },
-        (result, status) => cb(result, status)
-      );
+      // For time optimization, set optimizeWaypoints: false and use drivingOptions for DRIVING
+      const request: google.maps.DirectionsRequest = {
+        origin,
+        destination: destinationCoord,
+        waypoints,
+        travelMode: window.google.maps.TravelMode[mode],
+        optimizeWaypoints: false, // Do not optimize for distance
+      };
+      if (mode === 'DRIVING') {
+        request.drivingOptions = {
+          departureTime: new Date(), // Use current time for best traffic/time estimate
+        };
+      }
+      service.route(request, (result, status) => cb(result, status));
     };
 
     if (travelMode === 'WALKING+TRANSIT') {
-      // Try walking first, then transit if walking fails
       requestDirections('WALKING', (result, status) => {
         if (status === 'OK' && result) {
           setDirections(result);
           setDirectionsError(null);
+          setWalkingDistance(getTotalDistance(result));
+          setWalkingDuration(getTotalDuration(result));
         } else {
           requestDirections('TRANSIT', (result2, status2) => {
             if (status2 === 'OK' && result2) {
               setDirections(result2);
               setDirectionsError(null);
+              setWalkTransitDuration(getTotalDuration(result2));
             } else {
               setDirections(null);
               setDirectionsError('Could not fetch walking or transit directions.');
@@ -100,18 +134,56 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
           });
         }
       });
+      // Also fetch driving distance and duration in the background
+      requestDirections('DRIVING', (result, status) => {
+        if (status === 'OK' && result) {
+          setDrivingDistance(getTotalDistance(result));
+          setDrivingDuration(getTotalDuration(result));
+        }
+      });
     } else {
       requestDirections(travelMode as 'WALKING' | 'TRANSIT' | 'DRIVING', (result, status) => {
         if (status === 'OK' && result) {
           setDirections(result);
           setDirectionsError(null);
+          if (travelMode === 'WALKING') {
+            setWalkingDistance(getTotalDistance(result));
+            setWalkingDuration(getTotalDuration(result));
+          } else if (travelMode === 'DRIVING') {
+            setDrivingDistance(getTotalDistance(result));
+            setDrivingDuration(getTotalDuration(result));
+          }
         } else {
           setDirections(null);
           setDirectionsError(`Could not fetch ${travelMode.toLowerCase()} directions.`);
         }
       });
+      // If not walking, also fetch walking distance and duration in the background
+      if (travelMode !== 'WALKING') {
+        requestDirections('WALKING', (result, status) => {
+          if (status === 'OK' && result) {
+            setWalkingDistance(getTotalDistance(result));
+            setWalkingDuration(getTotalDuration(result));
+          }
+        });
+      }
+      // If not driving, also fetch driving distance and duration in the background
+      if (travelMode !== 'DRIVING') {
+        requestDirections('DRIVING', (result, status) => {
+          if (status === 'OK' && result) {
+            setDrivingDistance(getTotalDistance(result));
+            setDrivingDuration(getTotalDuration(result));
+          }
+        });
+      }
     }
-  }, [isGoogleMapsLoaded, coordinates, travelMode]);
+    // Always fetch walk+transit duration in the background for display
+    requestDirections('TRANSIT', (result, status) => {
+      if (status === 'OK' && result) {
+        setWalkTransitDuration(getTotalDuration(result));
+      }
+    });
+}, [isGoogleMapsLoaded, coordinates, travelMode]);
 
   // Initialize coordinates immediately from backend data (if available)
   useEffect(() => {
@@ -310,25 +382,39 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
 
   return (
   <div className="flex flex-col w-full">
+      {/* Display estimated time for the selected mode */}
+      <div className="flex gap-4 mb-2 self-end text-xs text-gray-700">
+        {travelMode === 'WALKING' && walkingDuration && (
+          <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded">Walk: {walkingDuration}</span>
+        )}
+        {travelMode === 'WALKING+TRANSIT' && (
+          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+            Walk+Transit: {walkTransitDuration ? walkTransitDuration : 'Calculating...'}
+          </span>
+        )}
+        {travelMode === 'DRIVING' && drivingDuration && (
+          <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">Vehicle: {drivingDuration}</span>
+        )}
+      </div>
       {/* Travel mode toggle */}
       <div className="mb-2 flex gap-2 self-end z-10">
         <button
           className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'WALKING' ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-700 border border-emerald-200'}`}
           onClick={() => setTravelMode('WALKING')}
         >
-          🚶 Walk
+          Walk
         </button>
         <button
           className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'WALKING+TRANSIT' ? 'bg-blue-600 text-white' : 'bg-white text-blue-700 border border-blue-200'}`}
           onClick={() => setTravelMode('WALKING+TRANSIT')}
         >
-          🚶+🚆 Walk+Transit
+          Walk+Transit
         </button>
         <button
           className={`px-3 py-1 rounded font-semibold text-sm ${travelMode === 'DRIVING' ? 'bg-orange-600 text-white' : 'bg-white text-orange-700 border border-orange-200'}`}
           onClick={() => setTravelMode('DRIVING')}
         >
-          🚗 Vehicle
+          Vehicle
         </button>
       </div>
       <div className="w-full h-[500px] rounded-xl overflow-hidden shadow-xl">
@@ -480,7 +566,7 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
                       alt={details.name || activeMarker.name}
                       className="rounded mb-2 w-full"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
+                        (e.target as HTMLImageElement).src = '/placeholder-location.png';
                       }}
                     />
                   )}
@@ -494,7 +580,15 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
                     <p className="text-xs mt-2 text-gray-700 leading-relaxed">{details.editorial_summary.overview}</p>
                   )}
                   {!details && (
-                    <p className="text-xs text-gray-500 italic">Loading details...</p>
+                    <>
+                      <img
+                        src={'/placeholder-location.png'}
+                        alt={activeMarker?.name || 'Location'}
+                        className="rounded mb-2 w-full"
+                        style={{ maxHeight: '120px', objectFit: 'cover' }}
+                      />
+                      <p className="text-xs text-gray-500 italic">Loading details...</p>
+                    </>
                   )}
                   {details?.url && (
                     <a
