@@ -1298,3 +1298,175 @@ async def send_itinerary(request: IMessageItineraryRequest):
         logger.error(f"Error sending itinerary: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error sending itinerary: {str(e)}")
 
+
+# ==================== Trip Status and Carbon Tracking Endpoints ====================
+
+class UpdateTripStatusRequest(BaseModel):
+    trip_id: str
+    user_id: str
+    status: str  # 'draft', 'before', 'during', or 'after'
+    selected_flight_id: Optional[str] = None
+    selected_flight_data: Optional[Dict[str, Any]] = None
+    carbon_emissions_kg: Optional[float] = None
+    carbon_credits: Optional[float] = None
+
+
+@app.put("/trips/status")
+async def update_trip_status(request: UpdateTripStatusRequest):
+    """Update trip status (before, during, after) and store carbon data"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Validate status
+        if request.status not in ['draft', 'before', 'during', 'after']:
+            raise HTTPException(status_code=400, detail="Invalid status. Must be 'draft', 'before', 'during', or 'after'")
+        
+        # Check if user owns the trip
+        trip_result = supabase.table("saved_trips").select("user_id").eq("id", request.trip_id).execute()
+        if not trip_result.data or len(trip_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        trip_owner = trip_result.data[0]["user_id"]
+        if trip_owner != request.user_id:
+            raise HTTPException(status_code=403, detail="You don't have permission to update this trip")
+        
+        # For 'during' and 'after' status, require flight selection
+        if request.status in ['during', 'after']:
+            if not request.selected_flight_id or not request.selected_flight_data:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Flight selection is required for '{request.status}' status"
+                )
+        
+        # Prepare update data
+        update_data = {
+            "trip_status": request.status,
+            "updated_at": "now()",
+        }
+        
+        if request.selected_flight_id:
+            update_data["selected_flight_id"] = request.selected_flight_id
+        if request.selected_flight_data:
+            update_data["selected_flight_data"] = request.selected_flight_data
+        if request.carbon_emissions_kg is not None:
+            update_data["carbon_emissions_kg"] = request.carbon_emissions_kg
+        if request.carbon_credits is not None:
+            update_data["carbon_credits"] = request.carbon_credits
+        
+        # Update the trip
+        result = supabase.table("saved_trips").update(update_data).eq("id", request.trip_id).execute()
+        
+        logger.info(f"Trip {request.trip_id} status updated to {request.status} by {request.user_id}")
+        return {"message": "Trip status updated successfully", "trip": result.data[0] if result.data else None}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating trip status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error updating trip status: {str(e)}")
+
+
+@app.get("/trips/carbon-stats")
+async def get_carbon_stats(user_id: str):
+    """Get carbon statistics for a user (trips count, total emissions, total credits)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get all trips with status 'after' (completed trips)
+        trips_result = supabase.table("saved_trips").select(
+            "id, carbon_emissions_kg, carbon_credits"
+        ).eq("user_id", user_id).eq("trip_status", "after").execute()
+        
+        trips = trips_result.data or []
+        trips_count = len(trips)
+        total_emissions = sum(float(t.get("carbon_emissions_kg") or 0) for t in trips)
+        total_credits = sum(float(t.get("carbon_credits") or 0) for t in trips)
+        
+        return {
+            "trips_count": trips_count,
+            "total_emissions_kg": round(total_emissions, 2),
+            "total_credits": round(total_credits, 2),
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting carbon stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting carbon stats: {str(e)}")
+
+
+@app.get("/trips/carbon-ranking")
+async def get_carbon_ranking(user_id: str):
+    """Get carbon credits ranking among friends"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get user's friends
+        friends_result = supabase.table("friendships").select("user_id, friend_id").or_(
+            f"user_id.eq.{user_id},friend_id.eq.{user_id}"
+        ).eq("status", "accepted").execute()
+        
+        friend_ids = set([user_id])  # Include self
+        for friendship in friends_result.data or []:
+            if friendship["user_id"] == user_id:
+                friend_ids.add(friendship["friend_id"])
+            else:
+                friend_ids.add(friendship["user_id"])
+        
+        # Get carbon stats for all friends
+        ranking = []
+        for friend_id in friend_ids:
+            # Get user info
+            user_prefs = supabase.table("user_preferences").select("username, email").eq(
+                "user_id", friend_id
+            ).execute()
+            
+            username = None
+            if user_prefs.data and len(user_prefs.data) > 0:
+                username = user_prefs.data[0].get("username")
+                if not username:
+                    # Use email as fallback
+                    email = user_prefs.data[0].get("email", "")
+                    username = email.split("@")[0] if email else f"user_{friend_id[:8]}"
+            else:
+                username = f"user_{friend_id[:8]}"
+            
+            # Get carbon stats
+            trips_result = supabase.table("saved_trips").select(
+                "id, carbon_emissions_kg, carbon_credits"
+            ).eq("user_id", friend_id).eq("trip_status", "after").execute()
+            
+            trips = trips_result.data or []
+            total_credits = sum(float(t.get("carbon_credits") or 0) for t in trips)
+            total_emissions = sum(float(t.get("carbon_emissions_kg") or 0) for t in trips)
+            trips_count = len(trips)
+            
+            ranking.append({
+                "user_id": friend_id,
+                "username": username,
+                "trips_count": trips_count,
+                "total_credits": round(total_credits, 2),
+                "total_emissions_kg": round(total_emissions, 2),
+            })
+        
+        # Sort by total credits (descending)
+        ranking.sort(key=lambda x: x["total_credits"], reverse=True)
+        
+        # Add rank
+        for i, entry in enumerate(ranking):
+            entry["rank"] = i + 1
+        
+        return {"ranking": ranking}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting carbon ranking: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting carbon ranking: {str(e)}")
+

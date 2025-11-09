@@ -295,6 +295,8 @@ export default function Results() {
   const [exploreReviewStates, setExploreReviewStates] = useState<
     Record<string, { open: boolean; index: number }>
   >({});
+  const [tripStatus, setTripStatus] = useState<"draft" | "before" | "during" | "after">("draft");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const normalizedHotelKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
   const normalizedExploreKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
@@ -405,6 +407,13 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
+        // Load trip status if trip is saved
+        if (savedTripId || (itinerary as any)?.trip_id || (itinerary as any)?.id) {
+          const tripId = savedTripId || (itinerary as any)?.trip_id || (itinerary as any)?.id;
+          if (tripId) {
+            loadTripStatus(tripId, session.user.id);
+          }
+        }
       }
     });
 
@@ -412,9 +421,96 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
+        // Load trip status if trip is saved
+        if (savedTripId) {
+          loadTripStatus(savedTripId, session.user.id);
+        }
       }
     });
   }, [router]);
+
+  const loadTripStatus = async (tripId: string, userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("saved_trips")
+        .select("trip_status")
+        .eq("id", tripId)
+        .eq("user_id", userId)
+        .single();
+      
+      if (!error && data) {
+        setTripStatus(data.trip_status || "draft");
+      }
+    } catch (err) {
+      console.error("Error loading trip status:", err);
+    }
+  };
+
+  const handleUpdateTripStatus = async (newStatus: "draft" | "before" | "during" | "after") => {
+    if (!user || !savedTripId) {
+      alert("Please save the trip first before updating status");
+      return;
+    }
+
+    // For 'during' and 'after', require flight selection
+    if (newStatus !== "before" && newStatus !== "draft" && !confirmedCabinId) {
+      alert("Please select a flight option before marking trip as 'during' or 'after'");
+      return;
+    }
+
+    setUpdatingStatus(true);
+    try {
+      let carbonEmissions: number | null = null;
+      let carbonCredits: number | null = null;
+      let selectedFlightData: any = null;
+
+      // Calculate carbon data if flight is selected
+      if (confirmedCabinData) {
+        carbonEmissions = confirmedCabinData.cabin.emissionsKg || null;
+        
+        // Calculate carbon credits (difference from max emission in the group)
+        if (confirmedCabinData.cabin.emissionsKg !== null && confirmedCabinData.cabin.emissionsKg !== undefined) {
+          const maxEmission = confirmedCabinData.maxEmission;
+          if (maxEmission > 0 && confirmedCabinData.cabin.cabin.toLowerCase() !== "first") {
+            carbonCredits = Math.max(0, maxEmission - confirmedCabinData.cabin.emissionsKg);
+          }
+        }
+
+        selectedFlightData = {
+          cabin: confirmedCabinData.cabin,
+          group: confirmedCabinData.group,
+        };
+      }
+
+      const response = await fetch("http://localhost:8000/trips/status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: savedTripId,
+          user_id: user.id,
+          status: newStatus,
+          selected_flight_id: confirmedCabinId || null,
+          selected_flight_data: selectedFlightData,
+          carbon_emissions_kg: carbonEmissions,
+          carbon_credits: carbonCredits,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to update trip status" }));
+        throw new Error(errorData.detail || "Failed to update trip status");
+      }
+
+      setTripStatus(newStatus);
+      if (newStatus === "after") {
+        alert("Trip completed! Carbon emissions and credits have been recorded.");
+      }
+    } catch (err: any) {
+      alert(`Failed to update trip status: ${err.message}`);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   const loadFriends = async (userId: string) => {
     if (!userId) {
@@ -704,6 +800,7 @@ export default function Results() {
           budget: itinerary.budget,
           mode: itinerary.mode,
           itinerary_data: itinerary,
+          trip_status: "draft", // New trips start as drafts
         })
         .select()
         .single();
@@ -1214,6 +1311,28 @@ export default function Results() {
             <div className="flex items-center gap-3">
               {user && (
                 <>
+                  {/* Trip Status Progress Tags */}
+                  {savedTripId && (
+                    <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white/60 px-3 py-1.5">
+                      {tripStatus === "draft" ? (
+                        <span className="text-xs font-medium text-gray-500">📝 Draft</span>
+                      ) : (
+                        <>
+                          <span className={`text-xs font-medium ${tripStatus === "before" ? "text-emerald-700" : "text-emerald-500"}`}>
+                            {tripStatus === "before" ? "●" : "✓"} Before
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${tripStatus === "during" ? "text-emerald-700" : tripStatus === "after" ? "text-emerald-500" : "text-gray-400"}`}>
+                            {tripStatus === "during" ? "●" : tripStatus === "after" ? "✓" : "○"} During
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${tripStatus === "after" ? "text-emerald-700" : "text-gray-400"}`}>
+                            {tripStatus === "after" ? "●" : "○"} After
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={regenerateItinerary}
                     disabled={checkingPreferences}
@@ -1264,6 +1383,52 @@ export default function Results() {
                   >
                     {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
                   </button>
+                  {/* Going Button */}
+                  {savedTripId && (
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          if (tripStatus === "draft") {
+                            handleUpdateTripStatus("before");
+                          } else if (tripStatus === "before") {
+                            handleUpdateTripStatus("during");
+                          } else if (tripStatus === "during") {
+                            handleUpdateTripStatus("after");
+                          } else {
+                            // Already after, show message
+                            alert("Trip is already completed!");
+                          }
+                        }}
+                        disabled={updatingStatus || tripStatus === "after"}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          tripStatus === "after"
+                            ? "bg-emerald-600 text-white"
+                            : tripStatus === "draft"
+                            ? "border border-gray-300 bg-white/60 text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
+                            : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                        }`}
+                        title={
+                          tripStatus === "draft"
+                            ? "Mark as going (planning to go)"
+                            : tripStatus === "before"
+                            ? "Mark as during trip (requires flight selection)"
+                            : tripStatus === "during"
+                            ? "Mark trip as completed"
+                            : "Trip completed"
+                        }
+                      >
+                        {updatingStatus
+                          ? "Updating..."
+                          : tripStatus === "draft"
+                          ? "✈️ Mark as Going"
+                          : tripStatus === "before"
+                          ? "✈️ Going"
+                          : tripStatus === "during"
+                          ? "✓ Complete Trip"
+                          : "✓ Completed"}
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
