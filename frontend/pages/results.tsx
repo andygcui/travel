@@ -1486,13 +1486,19 @@ export default function Results() {
         return (
                   <div
                     key={flight.groupId}
-                    className={`flight-card flex w-[320px] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-emerald-100 bg-white p-6 shadow-md transition-all duration-300 ${
+                    className={`flight-card flex flex-shrink-0 flex-col overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-md transition-all duration-300 ${
                       isExpanded
                         ? "ring-2 ring-emerald-200 shadow-lg"
-                        : expandedFlightId
-                          ? "pointer-events-none w-0 -translate-x-4 scale-95 p-0 opacity-0"
+                        : expandedFlightId && !isExpanded
+                          ? "pointer-events-none -translate-x-4 scale-95 opacity-0"
                           : "hover:shadow-lg"
-                    }`}
+                    } ${isExpanded ? "p-6" : expandedFlightId && !isExpanded ? "p-0" : "p-6"}`}
+                    style={{
+                      width:
+                        expandedFlightId && !isExpanded
+                          ? 0
+                          : 320,
+                    }}
                   >
             <button
               onClick={() => setExpandedFlightId(isExpanded ? null : flight.groupId)}
