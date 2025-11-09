@@ -45,15 +45,32 @@ export default function EditRegistrationPreferencesModal({
 
   const togglePreference = (pref: string, type: "preferences" | "likes" | "dislikes" | "dietary") => {
     if (type === "preferences") {
-      onPreferencesChange(
-        preferences.includes(pref) ? preferences.filter((p) => p !== pref) : [...preferences, pref]
+      // Case-insensitive check and remove, then add the normalized value
+      const normalizedPref = pref.trim();
+      const isSelected = preferences.some(
+        (p) => p && p.trim().toLowerCase() === normalizedPref.toLowerCase()
       );
+      if (isSelected) {
+        // Remove all case variations
+        onPreferencesChange(
+          preferences.filter((p) => p && p.trim().toLowerCase() !== normalizedPref.toLowerCase())
+        );
+      } else {
+        // Add the normalized value (exact match from preferenceOptions)
+        onPreferencesChange([...preferences.filter((p) => p && p.trim().toLowerCase() !== normalizedPref.toLowerCase()), normalizedPref]);
+      }
     } else if (type === "likes") {
-      onLikesChange(likes.includes(pref) ? likes.filter((l) => l !== pref) : [...likes, pref]);
+      const normalizedPref = pref.trim();
+      const isSelected = likes.some((l) => l && l.trim().toLowerCase() === normalizedPref.toLowerCase());
+      onLikesChange(isSelected ? likes.filter((l) => l && l.trim().toLowerCase() !== normalizedPref.toLowerCase()) : [...likes.filter((l) => l && l.trim().toLowerCase() !== normalizedPref.toLowerCase()), normalizedPref]);
     } else if (type === "dislikes") {
-      onDislikesChange(dislikes.includes(pref) ? dislikes.filter((d) => d !== pref) : [...dislikes, pref]);
+      const normalizedPref = pref.trim();
+      const isSelected = dislikes.some((d) => d && d.trim().toLowerCase() === normalizedPref.toLowerCase());
+      onDislikesChange(isSelected ? dislikes.filter((d) => d && d.trim().toLowerCase() !== normalizedPref.toLowerCase()) : [...dislikes.filter((d) => d && d.trim().toLowerCase() !== normalizedPref.toLowerCase()), normalizedPref]);
     } else if (type === "dietary") {
-      onDietaryChange(dietary.includes(pref) ? dietary.filter((d) => d !== pref) : [...dietary, pref]);
+      const normalizedPref = pref.trim();
+      const isSelected = dietary.some((d) => d && d.trim().toLowerCase() === normalizedPref.toLowerCase());
+      onDietaryChange(isSelected ? dietary.filter((d) => d && d.trim().toLowerCase() !== normalizedPref.toLowerCase()) : [...dietary.filter((d) => d && d.trim().toLowerCase() !== normalizedPref.toLowerCase()), normalizedPref]);
     }
   };
 
@@ -98,21 +115,27 @@ export default function EditRegistrationPreferencesModal({
           <div>
             <label className="mb-2 block text-sm font-semibold text-emerald-900">Interests</label>
             <div className="flex flex-wrap gap-2">
-              {preferenceOptions.map((pref) => (
-                <button
-                  key={pref}
-                  type="button"
-                  onClick={() => togglePreference(pref, "preferences")}
-                  disabled={saving}
-                  className={`rounded-full px-4 py-2 text-xs font-medium transition ${
-                    preferences.includes(pref)
-                      ? "bg-emerald-500 text-white"
-                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                  } disabled:opacity-50`}
-                >
-                  {pref}
-                </button>
-              ))}
+              {preferenceOptions.map((pref) => {
+                // Case-insensitive comparison to match preferences from database
+                const isSelected = preferences.some(
+                  (p) => p && p.trim().toLowerCase() === pref.toLowerCase()
+                );
+                return (
+                  <button
+                    key={pref}
+                    type="button"
+                    onClick={() => togglePreference(pref, "preferences")}
+                    disabled={saving}
+                    className={`rounded-full px-4 py-2 text-xs font-medium transition ${
+                      isSelected
+                        ? "bg-emerald-500 text-white"
+                        : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    } disabled:opacity-50`}
+                  >
+                    {pref}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

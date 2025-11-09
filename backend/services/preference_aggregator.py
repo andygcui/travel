@@ -26,16 +26,30 @@ async def save_preferences(preferences: List[Dict[str, Any]]) -> None:
             return
         
         for pref in preferences:
-            # Check if this preference already exists
-            existing = supabase.table("chat_preferences").select("*").eq(
-                "user_id", pref["user_id"]
-            ).eq("preference_category", pref["preference_category"]).eq(
-                "preference_value", pref["preference_value"]
-            ).eq("preference_type", pref["preference_type"]).execute()
+            # Normalize preference value for case-insensitive comparison
+            pref_value = pref.get("preference_value", "").strip()
+            pref_category = pref.get("preference_category", "").strip().lower()
+            pref_type = pref.get("preference_type", "").strip().lower()
             
-            if existing.data and len(existing.data) > 0:
+            # Check if this preference already exists (case-insensitive)
+            # First, get all preferences for this user with matching category and type
+            all_existing = supabase.table("chat_preferences").select("*").eq(
+                "user_id", pref["user_id"]
+            ).eq("preference_category", pref_category).eq(
+                "preference_type", pref_type
+            ).execute()
+            
+            # Find matching preference (case-insensitive value comparison)
+            existing_pref = None
+            if all_existing.data:
+                for existing in all_existing.data:
+                    existing_value = existing.get("preference_value", "").strip().lower()
+                    if existing_value == pref_value.lower():
+                        existing_pref = existing
+                        break
+            
+            if existing_pref:
                 # Update frequency
-                existing_pref = existing.data[0]
                 new_frequency = existing_pref.get("frequency", 1) + 1
                 
                 supabase.table("chat_preferences").update({
@@ -43,11 +57,15 @@ async def save_preferences(preferences: List[Dict[str, Any]]) -> None:
                     "updated_at": "now()",
                 }).eq("id", existing_pref["id"]).execute()
                 
-                logger.info(f"Updated preference frequency: {pref['preference_value']} -> {new_frequency}")
+                logger.info(f"Updated preference frequency: {pref_value} -> {new_frequency} (deduplicated)")
             else:
-                # Insert new preference
-                supabase.table("chat_preferences").insert(pref).execute()
-                logger.info(f"Inserted new preference: {pref['preference_value']}")
+                # Insert new preference (normalize the value before saving)
+                pref_to_save = pref.copy()
+                pref_to_save["preference_value"] = pref_value  # Use normalized value
+                pref_to_save["preference_category"] = pref_category
+                pref_to_save["preference_type"] = pref_type
+                supabase.table("chat_preferences").insert(pref_to_save).execute()
+                logger.info(f"Inserted new preference: {pref_value}")
         
     except Exception as e:
         logger.error(f"Error saving preferences: {e}", exc_info=True)

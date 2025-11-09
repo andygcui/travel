@@ -47,15 +47,30 @@ async def chat_planner(
     
     try:
         # Extract preferences from the message if user_id is provided
+        # IMPORTANT: Only extract preferences from chat messages, NOT from initial trip queries
+        # The initial query preferences are passed in the itinerary object and should NOT be saved
         if user_id:
             try:
-                extracted_prefs = await extract_preferences_from_message(message, user_id, trip_id)
-                if extracted_prefs:
-                    # Save preferences to database
-                    await save_preferences(extracted_prefs)
-                    # Check for promotion opportunities
-                    await promote_frequent_preferences(user_id)
-                    logger.info(f"Extracted and saved {len(extracted_prefs)} preferences")
+                # Check if this message looks like a chat message (not a query)
+                # Chat messages are typically conversational and don't contain query keywords
+                message_lower = message.lower().strip()
+                is_chat_message = len(message.split()) > 5 and not any(
+                    keyword in message_lower for keyword in [
+                        "plan a trip", "generate itinerary", "create itinerary",
+                        "trip to", "travel to", "destination:", "budget:", "days:"
+                    ]
+                )
+                
+                if is_chat_message:
+                    extracted_prefs = await extract_preferences_from_message(message, user_id, trip_id)
+                    if extracted_prefs:
+                        # Save preferences to database
+                        await save_preferences(extracted_prefs)
+                        # Check for promotion opportunities
+                        await promote_frequent_preferences(user_id)
+                        logger.info(f"Extracted and saved {len(extracted_prefs)} preferences from chat message")
+                else:
+                    logger.info(f"Message appears to be a query, not a chat message. Skipping preference extraction: {message[:50]}")
             except Exception as e:
                 logger.warning(f"Failed to extract preferences: {e}", exc_info=True)
                 # Continue even if preference extraction fails

@@ -69,6 +69,7 @@ export default function Dashboard() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<SavedTrip | null>(null);
   const [sharingTrip, setSharingTrip] = useState(false);
+  const [checkingPreferences, setCheckingPreferences] = useState(false);
   const previousPreferencesRef = useRef<string>("");
   const previousRegistrationPrefsRef = useRef<string>("");
   const previousProfileSummaryRef = useRef<string>("");
@@ -157,18 +158,33 @@ export default function Dashboard() {
   }, [user?.id]);
 
   const loadFriends = async () => {
-    if (!user) return;
+    if (!user) {
+      console.warn("loadFriends called without user");
+      return;
+    }
     setLoadingFriends(true);
     try {
+      console.log("Loading friends for user:", user.id);
       const response = await fetch(`http://localhost:8000/friends/list?user_id=${user.id}`);
+      console.log("Friends list response status:", response.status);
       if (response.ok) {
         const data = await response.json();
-        setFriends(data.friends || []);
+        console.log("Friends loaded - full response:", data);
+        console.log("Friends array:", data.friends);
+        console.log("Number of friends:", data.friends?.length || 0);
+        const friendsList = data.friends || [];
+        console.log("Setting friends state to:", friendsList);
+        setFriends(friendsList);
+        console.log("Friends state updated, current friends count:", friendsList.length);
+      } else {
+        const errorText = await response.text();
+        console.error("Error loading friends:", response.status, errorText);
       }
     } catch (err) {
       console.error("Error loading friends:", err);
     } finally {
       setLoadingFriends(false);
+      console.log("Finished loading friends");
     }
   };
 
@@ -301,11 +317,11 @@ export default function Dashboard() {
           previousPreferencesRef.current = preferencesString;
           // Save to localStorage for persistence across page reloads
           localStorage.setItem(`preferences_${userId}`, preferencesString);
-          setPreferences({
-            long_term: data.long_term || [],
-            frequent_trip_specific: data.frequent_trip_specific || [],
-            temporal: data.temporal || [],
-          });
+        setPreferences({
+          long_term: data.long_term || [],
+          frequent_trip_specific: data.frequent_trip_specific || [],
+          temporal: data.temporal || [],
+        });
           
           // Reload profile summary if preferences changed
           if (preferencesChanged && user) {
@@ -342,6 +358,38 @@ export default function Dashboard() {
     }
   };
 
+  // Normalize preferences to match exact valid option values
+  const normalizePreferences = (prefs: string[]): string[] => {
+    const VALID_PREFERENCE_OPTIONS = [
+      "Food", "Art", "Outdoors", "History", "Nightlife", "Wellness", "Shopping", "Adventure"
+    ];
+    const VALID_DIETARY_OPTIONS = [
+      "vegetarian", "vegan", "gluten-free", "dairy-free", "halal", "kosher", "pescatarian"
+    ];
+    
+    return prefs.map((pref) => {
+      if (!pref || !pref.trim()) return pref;
+      const prefTrimmed = pref.trim();
+      
+      // Match to valid preference options (case-insensitive)
+      for (const option of VALID_PREFERENCE_OPTIONS) {
+        if (option.toLowerCase() === prefTrimmed.toLowerCase()) {
+          return option; // Return exact value
+        }
+      }
+      
+      // Match to valid dietary options (case-insensitive)
+      for (const option of VALID_DIETARY_OPTIONS) {
+        if (option.toLowerCase() === prefTrimmed.toLowerCase()) {
+          return option; // Return exact value
+        }
+      }
+      
+      // If no match, return trimmed value (for likes/dislikes which are free-form)
+      return prefTrimmed;
+    }).filter((p) => p && p.trim()); // Remove empty values
+  };
+
   const loadRegistrationPreferences = async (userId: string) => {
     setLoadingRegistrationPrefs(true);
     try {
@@ -357,12 +405,25 @@ export default function Dashboard() {
         console.error("Error loading registration preferences:", error);
         console.error("Error code:", error.code, "Error message:", error.message);
       } else if (data) {
-        console.log("Registration preferences loaded:", data);
+        console.log("Registration preferences loaded (raw):", data);
+        
+        // Normalize preferences to match exact valid option values
+        const normalizedData = {
+          ...data,
+          preferences: normalizePreferences(data.preferences || []),
+          dietary_restrictions: normalizePreferences(data.dietary_restrictions || []),
+          // Likes and dislikes are free-form, just trim them
+          likes: (data.likes || []).map((l: string) => l?.trim()).filter((l: string) => l),
+          dislikes: (data.dislikes || []).map((d: string) => d?.trim()).filter((d: string) => d),
+        };
+        
+        console.log("Registration preferences loaded (normalized):", normalizedData);
+        
         const regPrefsString = JSON.stringify({
-          preferences: data.preferences || [],
-          likes: data.likes || [],
-          dislikes: data.dislikes || [],
-          dietary_restrictions: data.dietary_restrictions || [],
+          preferences: normalizedData.preferences,
+          likes: normalizedData.likes,
+          dislikes: normalizedData.dislikes,
+          dietary_restrictions: normalizedData.dietary_restrictions,
         });
         
         // Check if registration preferences changed
@@ -370,7 +431,7 @@ export default function Dashboard() {
         previousRegistrationPrefsRef.current = regPrefsString;
         // Save to localStorage for persistence across page reloads
         localStorage.setItem(`registration_preferences_${userId}`, regPrefsString);
-        setRegistrationPrefs(data);
+        setRegistrationPrefs(normalizedData);
         
         // Reload profile summary if registration preferences changed
         if (regPrefsChanged && user) {
@@ -470,23 +531,143 @@ export default function Dashboard() {
       }
     } else {
       // For owned trips, delete the trip
-      if (!confirm("Are you sure you want to delete this trip?")) return;
+    if (!confirm("Are you sure you want to delete this trip?")) return;
 
-      setDeleting(tripId);
-      try {
-        const { error } = await supabase
-          .from("saved_trips")
-          .delete()
-          .eq("id", tripId);
+    setDeleting(tripId);
+    try {
+      const { error } = await supabase
+        .from("saved_trips")
+        .delete()
+        .eq("id", tripId);
 
-        if (error) throw error;
+      if (error) throw error;
 
-        setTrips(trips.filter((t) => t.id !== tripId));
-      } catch (err: any) {
-        alert(`Failed to delete trip: ${err.message}`);
-      } finally {
-        setDeleting(null);
+      setTrips(trips.filter((t) => t.id !== tripId));
+    } catch (err: any) {
+      alert(`Failed to delete trip: ${err.message}`);
+    } finally {
+      setDeleting(null);
       }
+    }
+  };
+
+  const checkAndReloadPreferences = async () => {
+    if (!user) return;
+    
+    setCheckingPreferences(true);
+    try {
+      console.log("=== Checking for preference changes ===");
+      let preferencesChanged = false;
+      
+      // Check user's own preferences
+      const currentPrefsString = previousPreferencesRef.current || "";
+      const currentRegPrefsString = previousRegistrationPrefsRef.current || "";
+      
+      // Fetch current preferences
+      const prefsResponse = await fetch(`http://localhost:8000/user/preferences?user_id=${user.id}`);
+      if (prefsResponse.ok) {
+        const prefsData = await prefsResponse.json();
+        const newPrefsString = JSON.stringify({
+          long_term: prefsData.long_term || [],
+          frequent_trip_specific: prefsData.frequent_trip_specific || [],
+          temporal: prefsData.temporal || [],
+        });
+        
+        if (newPrefsString !== currentPrefsString) {
+          console.log("User preferences changed!");
+          preferencesChanged = true;
+        }
+        
+        // Check registration preferences (they're in the same endpoint)
+        const regPrefsString = JSON.stringify({
+          preferences: prefsData.preferences || [],
+          likes: prefsData.likes || [],
+          dislikes: prefsData.dislikes || [],
+          dietary_restrictions: prefsData.dietary_restrictions || [],
+        });
+        
+        if (regPrefsString !== currentRegPrefsString) {
+          console.log("User registration preferences changed!");
+          preferencesChanged = true;
+        }
+      }
+      
+      // Check collaborators' preferences from shared trips
+      const sharedTripsResponse = await fetch(`http://localhost:8000/trips/shared?user_id=${user.id}`);
+      if (sharedTripsResponse.ok) {
+        const sharedTripsData = await sharedTripsResponse.json();
+        const sharedTripsList = sharedTripsData.shared_trips || [];
+        
+        // Also get trips shared by the user (to check collaborators)
+        const sharedByResponse = await fetch(`http://localhost:8000/trips/shared-by?user_id=${user.id}`);
+        if (sharedByResponse.ok) {
+          const sharedByData = await sharedByResponse.json();
+          const sharedByList = sharedByData.shared_trips || [];
+          
+          // Get unique collaborator IDs
+          const collaboratorIds = new Set<string>();
+          sharedTripsList.forEach((trip: any) => {
+            if (trip.owner_id && trip.owner_id !== user.id) {
+              collaboratorIds.add(trip.owner_id);
+            }
+          });
+          sharedByList.forEach((trip: any) => {
+            if (trip.shared_with_id) {
+              collaboratorIds.add(trip.shared_with_id);
+            }
+          });
+          
+          // Check each collaborator's preferences
+          for (const collaboratorId of Array.from(collaboratorIds)) {
+            try {
+              const collabPrefsResponse = await fetch(`http://localhost:8000/user/preferences?user_id=${collaboratorId}`);
+              if (collabPrefsResponse.ok) {
+                const collabPrefsData = await collabPrefsResponse.json();
+                const collabPrefsString = JSON.stringify({
+                  long_term: collabPrefsData.long_term || [],
+                  frequent_trip_specific: collabPrefsData.frequent_trip_specific || [],
+                  temporal: collabPrefsData.temporal || [],
+                  preferences: collabPrefsData.preferences || [],
+                  likes: collabPrefsData.likes || [],
+                  dislikes: collabPrefsData.dislikes || [],
+                  dietary_restrictions: collabPrefsData.dietary_restrictions || [],
+                });
+                
+                // Check if we have cached preferences for this collaborator
+                const cachedCollabPrefs = localStorage.getItem(`preferences_${collaboratorId}`);
+                if (cachedCollabPrefs !== collabPrefsString) {
+                  console.log(`Collaborator ${collaboratorId} preferences changed!`);
+                  preferencesChanged = true;
+                  // Update cache
+                  localStorage.setItem(`preferences_${collaboratorId}`, collabPrefsString);
+                }
+              }
+            } catch (err) {
+              console.warn(`Error checking collaborator ${collaboratorId} preferences:`, err);
+            }
+          }
+        }
+      }
+      
+      if (preferencesChanged) {
+        console.log("Preferences changed! Reloading everything...");
+        // Reload everything
+        await loadPreferences(user.id, true);
+        await loadRegistrationPreferences(user.id);
+        await loadProfile(user.id, true);
+        await loadSharedTrips(user.id);
+        await loadFriends();
+        await loadTrips(user.id);
+        alert("Preferences updated! Your profile has been refreshed.");
+      } else {
+        console.log("No preference changes detected.");
+        alert("No preference changes detected. Everything is up to date!");
+      }
+    } catch (err: any) {
+      console.error("Error checking preferences:", err);
+      alert(`Error checking preferences: ${err.message}`);
+    } finally {
+      setCheckingPreferences(false);
     }
   };
 
@@ -709,6 +890,14 @@ export default function Dashboard() {
               >
                 🌍 Emissions Guide
               </Link>
+              <button
+                onClick={checkAndReloadPreferences}
+                disabled={checkingPreferences}
+                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Check for preference changes and reload profile"
+              >
+                {checkingPreferences ? "🔄 Checking..." : "🔄 Refresh Profile"}
+              </button>
               <span className="text-sm text-emerald-700">{user?.email}</span>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
@@ -760,9 +949,9 @@ export default function Dashboard() {
             </div>
           ) : (
             (registrationPrefs &&
-              (registrationPrefs.preferences?.length > 0 ||
-                registrationPrefs.likes?.length > 0 ||
-                registrationPrefs.dislikes?.length > 0 ||
+            (registrationPrefs.preferences?.length > 0 ||
+             registrationPrefs.likes?.length > 0 ||
+             registrationPrefs.dislikes?.length > 0 ||
                 registrationPrefs.dietary_restrictions?.length > 0)) ? (
               <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
@@ -1061,10 +1250,25 @@ export default function Dashboard() {
                       <p className="mt-1 text-sm text-emerald-600">{trip.destination}</p>
                     </div>
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => {
+                    <button
+                        onClick={async () => {
+                          console.log("=== SHARE BUTTON CLICKED (DASHBOARD) ===");
+                          console.log("Current user:", user?.id);
+                          console.log("Current friends count before reload:", friends.length);
                           setSelectedTrip(trip);
-                          setShowShareModal(true);
+                          if (user) {
+                            // Reload friends when opening share modal to ensure we have latest data
+                            console.log("Reloading friends for user:", user.id);
+                            await loadFriends();
+                            // Wait a moment for state to update
+                            setTimeout(() => {
+                              console.log("Opening share modal, current friends count after reload:", friends.length);
+                              setShowShareModal(true);
+                            }, 200);
+                          } else {
+                            console.warn("No user found when clicking share button");
+                            setShowShareModal(true);
+                          }
                         }}
                         className="rounded-full p-2 text-gray-400 transition hover:bg-emerald-50 hover:text-emerald-500"
                         title="Share trip"
@@ -1073,12 +1277,12 @@ export default function Dashboard() {
                       </button>
                       <button
                         onClick={() => handleDeleteTrip(trip.id, false)}
-                        disabled={deleting === trip.id}
+                      disabled={deleting === trip.id}
                         className="rounded-full p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
-                        title="Delete trip"
-                      >
-                        {deleting === trip.id ? "⏳" : "🗑️"}
-                      </button>
+                      title="Delete trip"
+                    >
+                      {deleting === trip.id ? "⏳" : "🗑️"}
+                    </button>
                     </div>
                   </div>
 
@@ -1267,10 +1471,41 @@ export default function Dashboard() {
               Share "{selectedTrip.trip_name}" with a friend
             </p>
 
-            {friends.length === 0 ? (
-              <p className="mb-4 text-sm text-emerald-600 italic">
-                You need to have friends to share trips. Go to the Friends page to add friends.
-              </p>
+            {(() => {
+              console.log("=== RENDERING SHARE MODAL (DASHBOARD) ===");
+              console.log("loadingFriends:", loadingFriends);
+              console.log("friends.length:", friends.length);
+              console.log("friends array:", friends);
+              return null;
+            })()}
+            {loadingFriends ? (
+              <p className="mb-4 text-sm text-emerald-600 italic">Loading friends...</p>
+            ) : friends.length === 0 ? (
+              <div className="mb-4">
+                <p className="mb-2 text-sm text-emerald-600 italic">
+                  You need to have friends to share trips. Go to the Friends page to add friends.
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  Debug: friends.length = {friends.length}, loadingFriends = {loadingFriends ? 'true' : 'false'}
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  User ID: {user?.id || 'none'}
+                </p>
+                <button
+                  onClick={() => {
+                    console.log("Refresh button clicked, user:", user);
+                    if (user) {
+                      console.log("Reloading friends for user:", user.id);
+                      loadFriends();
+                    } else {
+                      console.warn("No user found when trying to refresh friends");
+                    }
+                  }}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  Refresh Friends List
+                </button>
+              </div>
             ) : (
               <div className="mb-6 max-h-64 space-y-2 overflow-y-auto">
                 {friends.map((friend) => (

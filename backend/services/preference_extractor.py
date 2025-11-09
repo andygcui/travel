@@ -19,6 +19,9 @@ async def extract_preferences_from_message(
     """
     Extract preferences from a chat message using Dedalus.
     
+    IMPORTANT: This function should ONLY be called from chat messages, NOT from initial trip queries.
+    Preferences from initial trip queries should NOT be saved as user preferences.
+    
     Args:
         message: User's chat message
         user_id: User ID
@@ -30,11 +33,32 @@ async def extract_preferences_from_message(
     if not message or not message.strip():
         return []
     
+    # Filter out common query patterns that shouldn't be saved as preferences
+    # These are typically from initial trip queries, not chat messages
+    message_lower = message.lower().strip()
+    
+    # Skip if message looks like a trip query (contains destination, dates, budget keywords)
+    query_indicators = [
+        "plan a trip", "generate itinerary", "create itinerary", "plan itinerary",
+        "trip to", "travel to", "visit", "going to", "destination",
+        "budget", "days", "duration", "start date", "end date",
+        "preferences:", "i want", "i need", "i'm looking for"
+    ]
+    
+    # If message contains query indicators and is very short, it's likely a query, not a chat message
+    if any(indicator in message_lower for indicator in query_indicators) and len(message.split()) < 10:
+        logger.warning(f"Message appears to be a trip query, not a chat message. Skipping preference extraction: {message[:50]}")
+        return []
+    
     try:
         # Build prompt for Dedalus to extract preferences
         extraction_prompt = f"""Analyze the following user message and extract travel preferences.
 
 USER MESSAGE: "{message}"
+
+IMPORTANT: Only extract preferences that are clearly stated as personal preferences or travel habits.
+DO NOT extract preferences that are just part of a trip query or request (e.g., "I want shopping for this trip").
+Only extract preferences that indicate a general preference or habit (e.g., "I love shopping", "I always prefer shopping", "I'm a shopping enthusiast").
 
 Extract any preferences mentioned in the message and categorize them as:
 1. **Long-term preferences** (e.g., dietary restrictions like vegetarian/vegan, accessibility needs, travel style)

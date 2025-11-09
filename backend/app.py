@@ -168,15 +168,54 @@ async def save_user_preferences(request: SaveUserPreferencesRequest):
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
         
-        # Prepare data for upsert
+        # Normalize preferences to match exact values from preferenceOptions (case-sensitive matching)
+        # Valid preference options (must match exactly)
+        VALID_PREFERENCE_OPTIONS = [
+            "Food", "Art", "Outdoors", "History", "Nightlife", "Wellness", "Shopping", "Adventure"
+        ]
+        VALID_DIETARY_OPTIONS = [
+            "vegetarian", "vegan", "gluten-free", "dairy-free", "halal", "kosher", "pescatarian"
+        ]
+        
+        def normalize_preference_list(prefs: List[str], valid_options: List[str] = None) -> List[str]:
+            """Normalize and deduplicate preference list, matching to valid options exactly"""
+            if not prefs:
+                return []
+            seen = set()
+            normalized = []
+            for pref in prefs:
+                if not pref or not pref.strip():
+                    continue
+                pref_trimmed = pref.strip()
+                
+                # If valid_options provided, match case-insensitively but return exact value
+                if valid_options:
+                    matched_option = None
+                    for option in valid_options:
+                        if option.lower() == pref_trimmed.lower():
+                            matched_option = option
+                            break
+                    if matched_option:
+                        pref_trimmed = matched_option
+                
+                normalized_lower = pref_trimmed.lower()
+                if normalized_lower not in seen:
+                    seen.add(normalized_lower)
+                    normalized.append(pref_trimmed)
+            return normalized
+        
+        # Prepare data for upsert with normalized preferences
+        # Match preferences to exact valid option values
         upsert_data = {
             "user_id": request.user_id,
-            "preferences": request.preferences,
-            "likes": request.likes,
-            "dislikes": request.dislikes,
-            "dietary_restrictions": request.dietary_restrictions,
+            "preferences": normalize_preference_list(request.preferences, VALID_PREFERENCE_OPTIONS),
+            "likes": normalize_preference_list(request.likes),  # Likes/dislikes are free-form
+            "dislikes": normalize_preference_list(request.dislikes),  # Likes/dislikes are free-form
+            "dietary_restrictions": normalize_preference_list(request.dietary_restrictions, VALID_DIETARY_OPTIONS),
             "updated_at": "now()",
         }
+        
+        logger.info(f"Normalized preferences for user {request.user_id}: preferences={upsert_data['preferences']}, likes={upsert_data['likes']}, dislikes={upsert_data['dislikes']}")
         
         # Add username if provided
         if request.username:
@@ -547,6 +586,7 @@ async def add_friend(request: AddFriendRequest):
 async def get_friends(user_id: str):
     """Get list of friends (accepted friendships)"""
     try:
+        logger.info(f"Getting friends for user: {user_id}")
         supabase = get_supabase_client()
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
@@ -555,6 +595,8 @@ async def get_friends(user_id: str):
         friendships = supabase.table("friendships").select("*").or_(
             f"user_id.eq.{user_id},friend_id.eq.{user_id}"
         ).eq("status", "accepted").execute()
+        
+        logger.info(f"Found {len(friendships.data or [])} accepted friendships for user {user_id}")
         
         friends = []
         supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
@@ -567,7 +609,7 @@ async def get_friends(user_id: str):
                 "Authorization": f"Bearer {service_role_key}",
             }
             
-            for friendship in friendships.data:
+            for friendship in friendships.data or []:
                 other_user_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
                 try:
                     # Get username from user_preferences
@@ -583,16 +625,21 @@ async def get_friends(user_id: str):
                         friend_user = response.json()
                         email = friend_user.get("email", "")
                     
-                    friends.append({
+                    friend_data = {
                         "friendship_id": friendship["id"],
                         "friend_id": other_user_id,
                         "username": username,
                         "email": email,
                         "created_at": friendship["created_at"]
-                    })
+                    }
+                    friends.append(friend_data)
+                    logger.info(f"Added friend: {friend_data}")
                 except Exception as e:
-                    logger.warning(f"Error fetching friend user {other_user_id}: {e}")
+                    logger.warning(f"Error fetching friend user {other_user_id}: {e}", exc_info=True)
+        else:
+            logger.warning("Supabase URL or service role key not configured, returning empty friends list")
         
+        logger.info(f"Returning {len(friends)} friends for user {user_id}")
         return {"friends": friends}
         
     except HTTPException:

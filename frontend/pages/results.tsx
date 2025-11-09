@@ -278,6 +278,15 @@ export default function Results() {
   const [confirmedCabinId, setConfirmedCabinId] = useState<string | null>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [checkingPreferences, setCheckingPreferences] = useState(false);
+
+  // Log friends count whenever it changes
+  useEffect(() => {
+    console.log("Friends state changed - current count:", friends.length);
+    if (friends.length > 0) {
+      console.log("Current friends list:", friends);
+    }
+  }, [friends]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharingTrip, setSharingTrip] = useState(false);
   const [hotelReviewStates, setHotelReviewStates] = useState<
@@ -408,18 +417,211 @@ export default function Results() {
   }, [router]);
 
   const loadFriends = async (userId: string) => {
-    if (!userId) return;
+    if (!userId) {
+      console.warn("loadFriends called without userId");
+      return;
+    }
     setLoadingFriends(true);
     try {
+      console.log("Loading friends for user:", userId);
       const response = await fetch(`http://localhost:8000/friends/list?user_id=${userId}`);
+      console.log("Friends list response status:", response.status);
       if (response.ok) {
         const data = await response.json();
-        setFriends(data.friends || []);
+        console.log("Friends loaded - full response:", data);
+        console.log("Friends array:", data.friends);
+        console.log("Number of friends:", data.friends?.length || 0);
+        const friendsList = data.friends || [];
+        console.log("Setting friends state to:", friendsList);
+        setFriends(friendsList);
+        console.log("Friends state updated, current friends count:", friendsList.length);
+      } else {
+        const errorText = await response.text();
+        console.error("Error loading friends:", response.status, errorText);
       }
     } catch (err: any) {
       console.error("Error loading friends:", err);
     } finally {
       setLoadingFriends(false);
+      console.log("Finished loading friends");
+    }
+  };
+
+  const regenerateItinerary = async () => {
+    if (!user || !itinerary) return;
+    
+    setCheckingPreferences(true);
+    try {
+      console.log("=== Regenerating itinerary with all collaborators' preferences ===");
+      
+      // Get all collaborators for this trip
+      const collaboratorIds = new Set<string>();
+      
+      // Get collaborator from itinerary if it's a shared trip
+      const collaboratorId = (itinerary as any)?.collaborator_id;
+      if (collaboratorId) {
+        collaboratorIds.add(collaboratorId);
+      }
+      
+      // Get all collaborators from shared trips (trips shared with user and trips shared by user)
+      if (savedTripId) {
+        try {
+          // Get trips shared with the user
+          const sharedWithResponse = await fetch(`http://localhost:8000/trips/shared?user_id=${user.id}`);
+          if (sharedWithResponse.ok) {
+            const sharedWithData = await sharedWithResponse.json();
+            const sharedTrips = sharedWithData.shared_trips || [];
+            for (const trip of sharedTrips) {
+              if (trip.trip_id === savedTripId || trip.id === savedTripId) {
+                if (trip.owner_id && trip.owner_id !== user.id) {
+                  collaboratorIds.add(trip.owner_id);
+                }
+              }
+            }
+          }
+          
+          // Get trips shared by the user
+          const sharedByResponse = await fetch(`http://localhost:8000/trips/shared-by?user_id=${user.id}`);
+          if (sharedByResponse.ok) {
+            const sharedByData = await sharedByResponse.json();
+            const sharedByTrips = sharedByData.shared_trips || [];
+            for (const trip of sharedByTrips) {
+              if (trip.trip_id === savedTripId || trip.id === savedTripId) {
+                if (trip.shared_with_id) {
+                  collaboratorIds.add(trip.shared_with_id);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Error getting shared trips:", err);
+        }
+      }
+      
+      console.log(`Found ${collaboratorIds.size} collaborator(s):`, Array.from(collaboratorIds));
+      
+      // Get user's registration preferences
+      let combinedPreferences: string[] = [];
+      let combinedLikes: string[] = [];
+      let combinedDislikes: string[] = [];
+      let combinedDietary: string[] = [];
+      
+      try {
+        const userPrefsResponse = await fetch(`http://localhost:8000/user/preferences?user_id=${user.id}`);
+        if (userPrefsResponse.ok) {
+          const userPrefsData = await userPrefsResponse.json();
+          // Get registration preferences from user_preferences table
+          const userRegPrefsResponse = await supabase
+            .from("user_preferences")
+            .select("preferences, likes, dislikes, dietary_restrictions")
+            .eq("user_id", user.id)
+            .single();
+          
+          if (userRegPrefsResponse.data) {
+            combinedPreferences = userRegPrefsResponse.data.preferences || [];
+            combinedLikes = userRegPrefsResponse.data.likes || [];
+            combinedDislikes = userRegPrefsResponse.data.dislikes || [];
+            combinedDietary = userRegPrefsResponse.data.dietary_restrictions || [];
+          }
+        }
+      } catch (err) {
+        console.warn("Error getting user preferences:", err);
+      }
+      
+      // Get all collaborators' preferences and combine them
+      for (const collabId of Array.from(collaboratorIds)) {
+        try {
+          const collabRegPrefsResponse = await supabase
+            .from("user_preferences")
+            .select("preferences, likes, dislikes, dietary_restrictions")
+            .eq("user_id", collabId)
+            .single();
+          
+          if (collabRegPrefsResponse.data) {
+            const collabPrefs = collabRegPrefsResponse.data.preferences || [];
+            const collabLikes = collabRegPrefsResponse.data.likes || [];
+            const collabDislikes = collabRegPrefsResponse.data.dislikes || [];
+            const collabDietary = collabRegPrefsResponse.data.dietary_restrictions || [];
+            
+            // Combine preferences (union, no duplicates)
+            combinedPreferences = Array.from(new Set([...combinedPreferences, ...collabPrefs]));
+            combinedLikes = Array.from(new Set([...combinedLikes, ...collabLikes]));
+            combinedDislikes = Array.from(new Set([...combinedDislikes, ...collabDislikes]));
+            combinedDietary = Array.from(new Set([...combinedDietary, ...collabDietary]));
+            
+            console.log(`Combined preferences from collaborator ${collabId}`);
+          }
+        } catch (err) {
+          console.warn(`Error getting collaborator ${collabId} preferences:`, err);
+        }
+      }
+      
+      console.log("Combined preferences:", {
+        preferences: combinedPreferences,
+        likes: combinedLikes,
+        dislikes: combinedDislikes,
+        dietary_restrictions: combinedDietary,
+      });
+      
+      // Regenerate itinerary with combined preferences
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+      
+      const response = await fetch("http://localhost:8000/generate_itinerary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: itinerary.destination,
+          origin: (itinerary as any).origin || undefined,
+          start_date: itinerary.start_date || undefined,
+          end_date: itinerary.end_date || undefined,
+          num_days: itinerary.num_days,
+          budget: itinerary.budget,
+          preferences: combinedPreferences,
+          likes: combinedLikes,
+          dislikes: combinedDislikes,
+          dietary_restrictions: combinedDietary,
+          mode: itinerary.mode || "balanced",
+        }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to regenerate itinerary" }));
+        throw new Error(errorData.detail || "Failed to regenerate itinerary");
+      }
+      
+      const newItinerary = await response.json();
+      
+      // Update itinerary with new data, preserving collaborator info
+      const updatedItinerary = {
+        ...newItinerary,
+        collaborator_id: collaboratorId || (itinerary as any)?.collaborator_id,
+        trip_id: savedTripId || (itinerary as any)?.trip_id || (itinerary as any)?.id,
+      };
+      
+      // Update sessionStorage
+      sessionStorage.setItem("itinerary", JSON.stringify(updatedItinerary));
+      
+      // Update state
+      setItinerary(updatedItinerary as ItineraryResponse);
+      setCurrentDayIndex(0);
+      
+      // Reload friends list
+      await loadFriends(user.id);
+      
+      alert("Itinerary regenerated successfully with all collaborators' preferences!");
+    } catch (err: any) {
+      console.error("Error regenerating itinerary:", err);
+      if (err.name === 'AbortError') {
+        alert("Request timed out. The itinerary regeneration is taking longer than expected. Please try again.");
+      } else {
+        alert(`Error regenerating itinerary: ${err.message}`);
+      }
+    } finally {
+      setCheckingPreferences(false);
     }
   };
 
@@ -1012,9 +1214,34 @@ export default function Results() {
             <div className="flex items-center gap-3">
               {user && (
                 <>
+                  <button
+                    onClick={regenerateItinerary}
+                    disabled={checkingPreferences}
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Regenerate itinerary with all collaborators' preferences"
+                  >
+                    {checkingPreferences ? "🔄 Regenerating..." : "🔄 Refresh"}
+                  </button>
                   {savedTripId && (
                     <button
-                      onClick={() => setShowShareModal(true)}
+                      onClick={async () => {
+                        console.log("=== SHARE BUTTON CLICKED ===");
+                        console.log("Current user:", user?.id);
+                        console.log("Current friends count before reload:", friends.length);
+                        if (user) {
+                          // Reload friends when opening share modal to ensure we have latest data
+                          console.log("Reloading friends for user:", user.id);
+                          await loadFriends(user.id);
+                          // Wait a moment for state to update
+                          setTimeout(() => {
+                            console.log("Opening share modal, current friends count after reload:", friends.length);
+                            setShowShareModal(true);
+                          }, 200);
+                        } else {
+                          console.warn("No user found when clicking share button");
+                          setShowShareModal(true);
+                        }
+                      }}
                       disabled={sharingTrip}
                       className={`rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         (itinerary as any)?.shared
@@ -1840,13 +2067,46 @@ export default function Results() {
               Share "{tripName || itinerary?.destination || 'this trip'}" with a friend
             </p>
 
-            {friends.length === 0 ? (
-              <p className="mb-4 text-sm text-emerald-600 italic">
-                You need to have friends to share trips. Go to the Friends page to add friends.
-              </p>
+            {(() => {
+              console.log("=== RENDERING SHARE MODAL ===");
+              console.log("loadingFriends:", loadingFriends);
+              console.log("friends.length:", friends.length);
+              console.log("friends array:", friends);
+              return null;
+            })()}
+            {loadingFriends ? (
+              <p className="mb-4 text-sm text-emerald-600 italic">Loading friends...</p>
+            ) : friends.length === 0 ? (
+              <div className="mb-4">
+                <p className="mb-2 text-sm text-emerald-600 italic">
+                  You need to have friends to share trips. Go to the Friends page to add friends.
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  Debug: friends.length = {friends.length}, loadingFriends = {loadingFriends ? 'true' : 'false'}
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  User ID: {user?.id || 'none'}
+                </p>
+                <button
+                  onClick={() => {
+                    console.log("Refresh button clicked, user:", user);
+                    if (user) {
+                      console.log("Reloading friends for user:", user.id);
+                      loadFriends(user.id);
+                    } else {
+                      console.warn("No user found when trying to refresh friends");
+                    }
+                  }}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  Refresh Friends List
+                </button>
+              </div>
             ) : (
               <div className="mb-6 max-h-64 space-y-2 overflow-y-auto">
-                {friends.map((friend) => (
+                {friends.map((friend) => {
+                  console.log("Rendering friend:", friend);
+                  return (
                   <div
                     key={friend.friendship_id}
                     className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
@@ -1864,7 +2124,8 @@ export default function Results() {
                       Share
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
