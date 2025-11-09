@@ -84,7 +84,55 @@ export default function Friends() {
       const response = await fetch(`http://localhost:8000/trips/carbon-ranking?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
-        setCarbonRanking(data.ranking || []);
+        const friendsRanking = data.ranking || [];
+        
+        // Add celebrities to the ranking
+        const celebrities = [
+          {
+            user_id: "celebrity_drake",
+            username: "Drake",
+            trips_count: 0,
+            total_credits: -3437000, // -3,437 * 10^3
+            total_emissions_kg: 0,
+            is_celebrity: true,
+          },
+          {
+            user_id: "celebrity_elon",
+            username: "Elon Musk",
+            trips_count: 0,
+            total_credits: -5443000, // -5,443 * 10^3
+            total_emissions_kg: 0,
+            is_celebrity: true,
+          },
+          {
+            user_id: "celebrity_kim",
+            username: "Kim Kardashian",
+            trips_count: 0,
+            total_credits: -4800000, // -4,800 * 10^3
+            total_emissions_kg: 0,
+            is_celebrity: true,
+          },
+          {
+            user_id: "celebrity_taylor",
+            username: "Taylor Swift",
+            trips_count: 0,
+            total_credits: -1753000, // -1,753 * 10^3 (assuming 10^3, not 10^-3)
+            total_emissions_kg: 0,
+            is_celebrity: true,
+          },
+        ];
+        
+        // Combine friends and celebrities, then sort by total_credits (descending)
+        const combinedRanking = [...friendsRanking, ...celebrities].sort((a, b) => {
+          return b.total_credits - a.total_credits;
+        });
+        
+        // Add rank to each entry
+        combinedRanking.forEach((entry, index) => {
+          entry.rank = index + 1;
+        });
+        
+        setCarbonRanking(combinedRanking);
       }
     } catch (err) {
       console.error("Error loading carbon ranking:", err);
@@ -361,10 +409,24 @@ export default function Friends() {
               <div className="space-y-3">
                 {carbonRanking.map((entry, idx) => {
                   const isCurrentUser = entry.user_id === user?.id;
+                  const isCelebrity = entry.is_celebrity || entry.user_id?.startsWith("celebrity_");
                   const isTopThree = entry.rank <= 3;
                   
                   // Medal emojis for top 3
                   const medalEmoji = entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : "";
+                  
+                  // Format credits for display (handle large negative numbers)
+                  const formatCredits = (credits: number) => {
+                    if (Math.abs(credits) >= 1000000) {
+                      return `${(credits / 1000000).toFixed(1)}M`;
+                    } else if (Math.abs(credits) >= 1000) {
+                      return `${(credits / 1000).toFixed(1)}K`;
+                    }
+                    return credits.toFixed(1);
+                  };
+                  
+                  // Determine color based on credits (negative = red, positive = green)
+                  const creditsColor = entry.total_credits < 0 ? "text-red-600" : "text-emerald-700";
                   
                   return (
                     <div
@@ -372,6 +434,8 @@ export default function Friends() {
                       className={`relative flex items-center justify-between rounded-xl p-4 transition-all ${
                         isCurrentUser
                           ? "bg-gradient-to-r from-emerald-100 to-emerald-50 border-2 border-emerald-400 shadow-md"
+                          : isCelebrity
+                          ? "bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 shadow-sm"
                           : isTopThree
                           ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 shadow-sm"
                           : "bg-white border border-emerald-200 shadow-sm hover:shadow-md"
@@ -386,6 +450,8 @@ export default function Friends() {
                             ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
                             : entry.rank === 3
                             ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
+                            : isCelebrity
+                            ? "bg-gradient-to-br from-purple-400 to-pink-400 text-white"
                             : "bg-emerald-100 text-emerald-700"
                         }`}>
                           {medalEmoji || `#${entry.rank}`}
@@ -394,36 +460,53 @@ export default function Friends() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className={`font-semibold ${
-                              isCurrentUser ? "text-emerald-900" : "text-gray-900"
+                              isCurrentUser ? "text-emerald-900" : isCelebrity ? "text-purple-900" : "text-gray-900"
                             }`}>
-                              @{entry.username}
+                              {isCelebrity ? entry.username : `@${entry.username}`}
                             </span>
                             {isCurrentUser && (
                               <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-medium text-white">
                                 You
                               </span>
                             )}
-                            {isTopThree && !isCurrentUser && (
+                            {isCelebrity && (
+                              <span className="rounded-full bg-purple-500 px-2 py-0.5 text-xs font-medium text-white">
+                                ⭐ Celebrity
+                              </span>
+                            )}
+                            {isTopThree && !isCurrentUser && !isCelebrity && (
                               <span className="text-lg">{medalEmoji}</span>
                             )}
                           </div>
-                          <p className="text-xs text-emerald-600">
-                            {entry.trips_count} {entry.trips_count === 1 ? "trip" : "trips"} completed
-                          </p>
+                          {!isCelebrity && (
+                            <p className="text-xs text-emerald-600">
+                              {entry.trips_count} {entry.trips_count === 1 ? "trip" : "trips"} completed
+                            </p>
+                          )}
+                          {isCelebrity && (
+                            <p className="text-xs text-purple-600">
+                              Celebrity carbon footprint
+                            </p>
+                          )}
                         </div>
                       </div>
                       
                       {/* Credits Display */}
                       <div className="text-right">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-bold text-emerald-700">
-                            {entry.total_credits.toFixed(1)}
+                          <span className={`text-2xl font-bold ${creditsColor}`}>
+                            {formatCredits(entry.total_credits)}
                           </span>
-                          <span className="text-sm font-medium text-emerald-600">credits</span>
+                          <span className={`text-sm font-medium ${creditsColor}`}>credits</span>
                         </div>
                         {entry.total_emissions_kg > 0 && (
                           <p className="text-xs text-gray-500 mt-1">
                             {entry.total_emissions_kg.toFixed(1)} kg CO₂ saved
+                          </p>
+                        )}
+                        {entry.total_credits < 0 && (
+                          <p className="text-xs text-red-500 mt-1">
+                            High carbon footprint
                           </p>
                         )}
                       </div>
