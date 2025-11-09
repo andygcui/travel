@@ -521,15 +521,26 @@ async def get_friends(user_id: str):
             for friendship in friendships.data:
                 other_user_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
                 try:
+                    # Get username from user_preferences
+                    username_result = supabase.table("user_preferences").select("username").eq(
+                        "user_id", other_user_id
+                    ).execute()
+                    username = username_result.data[0].get("username", "") if username_result.data and len(username_result.data) > 0 else ""
+                    
+                    # Get email from auth API
                     response = requests.get(f"{admin_url}/{other_user_id}", headers=headers)
+                    email = ""
                     if response.status_code == 200:
                         friend_user = response.json()
-                        friends.append({
-                            "friendship_id": friendship["id"],
-                            "friend_id": other_user_id,
-                            "email": friend_user.get("email", ""),
-                            "created_at": friendship["created_at"]
-                        })
+                        email = friend_user.get("email", "")
+                    
+                    friends.append({
+                        "friendship_id": friendship["id"],
+                        "friend_id": other_user_id,
+                        "username": username,
+                        "email": email,
+                        "created_at": friendship["created_at"]
+                    })
                 except Exception as e:
                     logger.warning(f"Error fetching friend user {other_user_id}: {e}")
         
@@ -590,8 +601,17 @@ async def get_pending_requests(user_id: str):
             for friendship in friendships.data or []:
                 try:
                     logger.info(f"Fetching requester info for user_id: {friendship['user_id']}")
+                    
+                    # Get username from user_preferences
+                    username_result = supabase.table("user_preferences").select("username").eq(
+                        "user_id", friendship["user_id"]
+                    ).execute()
+                    username = username_result.data[0].get("username", "") if username_result.data and len(username_result.data) > 0 else ""
+                    
+                    # Get email from auth API
                     response = requests.get(f"{admin_url}/{friendship['user_id']}", headers=headers)
                     logger.info(f"Admin API response status: {response.status_code}")
+                    email = ""
                     if response.status_code == 200:
                         requester_data = response.json()
                         logger.info(f"Requester data: {requester_data}")
@@ -607,29 +627,22 @@ async def get_pending_requests(user_id: str):
                             requester = requester_data
                         
                         email = requester.get("email", "") if isinstance(requester, dict) else ""
-                        requests.append({
-                            "friendship_id": friendship["id"],
-                            "requester_id": friendship["user_id"],
-                            "email": email or f"user_{friendship['user_id'][:8]}",
-                            "created_at": friendship["created_at"]
-                        })
-                        logger.info(f"Added pending request: {email or 'no email'}")
-                    else:
-                        error_text = response.text
-                        logger.warning(f"Failed to fetch requester {friendship['user_id']}: {response.status_code} - {error_text}")
-                        # Still add the request without email
-                        requests.append({
-                            "friendship_id": friendship["id"],
-                            "requester_id": friendship["user_id"],
-                            "email": f"user_{friendship['user_id'][:8]}",
-                            "created_at": friendship["created_at"]
-                        })
-                except Exception as e:
-                    logger.warning(f"Error fetching requester {friendship['user_id']}: {e}", exc_info=True)
-                    # Still add the request without email
+                    
                     requests.append({
                         "friendship_id": friendship["id"],
                         "requester_id": friendship["user_id"],
+                        "username": username,
+                        "email": email or f"user_{friendship['user_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
+                    logger.info(f"Added pending request: {username or email or 'no identifier'}")
+                except Exception as e:
+                    logger.warning(f"Error fetching requester {friendship['user_id']}: {e}", exc_info=True)
+                    # Still add the request without email/username
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "requester_id": friendship["user_id"],
+                        "username": "",
                         "email": f"user_{friendship['user_id'][:8]}",
                         "created_at": friendship["created_at"]
                     })
@@ -677,9 +690,19 @@ async def get_sent_requests(user_id: str):
             # Return empty list if we can't fetch user emails, but still return the friendship IDs
             if friendships.data:
                 for friendship in friendships.data:
+                    # Try to get username even without service key
+                    try:
+                        username_result = supabase.table("user_preferences").select("username").eq(
+                            "user_id", friendship["friend_id"]
+                        ).execute()
+                        username = username_result.data[0].get("username", "") if username_result.data and len(username_result.data) > 0 else ""
+                    except:
+                        username = ""
+                    
                     requests.append({
                         "friendship_id": friendship["id"],
                         "recipient_id": friendship["friend_id"],
+                        "username": username,
                         "email": f"user_{friendship['friend_id'][:8]}",
                         "created_at": friendship["created_at"]
                     })
@@ -693,9 +716,17 @@ async def get_sent_requests(user_id: str):
             for friendship in friendships.data or []:
                 try:
                     logger.info(f"Fetching recipient info for friend_id: {friendship['friend_id']}")
-                    # Use Supabase admin API to get user by ID
+                    
+                    # Get username from user_preferences
+                    username_result = supabase.table("user_preferences").select("username").eq(
+                        "user_id", friendship["friend_id"]
+                    ).execute()
+                    username = username_result.data[0].get("username", "") if username_result.data and len(username_result.data) > 0 else ""
+                    
+                    # Get email from auth API
                     response = requests.get(f"{admin_url}/{friendship['friend_id']}", headers=headers)
                     logger.info(f"Admin API response status: {response.status_code}")
+                    email = ""
                     if response.status_code == 200:
                         recipient_data = response.json()
                         logger.info(f"Recipient data: {recipient_data}")
@@ -711,29 +742,22 @@ async def get_sent_requests(user_id: str):
                             recipient = recipient_data
                         
                         email = recipient.get("email", "") if isinstance(recipient, dict) else ""
-                        requests.append({
-                            "friendship_id": friendship["id"],
-                            "recipient_id": friendship["friend_id"],
-                            "email": email or f"user_{friendship['friend_id'][:8]}",
-                            "created_at": friendship["created_at"]
-                        })
-                        logger.info(f"Added sent request: {email or 'no email'}")
-                    else:
-                        error_text = response.text
-                        logger.warning(f"Failed to fetch recipient {friendship['friend_id']}: {response.status_code} - {error_text}")
-                        # Still add the request without email
-                        requests.append({
-                            "friendship_id": friendship["id"],
-                            "recipient_id": friendship["friend_id"],
-                            "email": f"user_{friendship['friend_id'][:8]}",
-                            "created_at": friendship["created_at"]
-                        })
-                except Exception as e:
-                    logger.warning(f"Error fetching recipient {friendship['friend_id']}: {e}", exc_info=True)
-                    # Still add the request without email
+                    
                     requests.append({
                         "friendship_id": friendship["id"],
                         "recipient_id": friendship["friend_id"],
+                        "username": username,
+                        "email": email or f"user_{friendship['friend_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
+                    logger.info(f"Added sent request: {username or email or 'no identifier'}")
+                except Exception as e:
+                    logger.warning(f"Error fetching recipient {friendship['friend_id']}: {e}", exc_info=True)
+                    # Still add the request without email/username
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "recipient_id": friendship["friend_id"],
+                        "username": "",
                         "email": f"user_{friendship['friend_id'][:8]}",
                         "created_at": friendship["created_at"]
                     })

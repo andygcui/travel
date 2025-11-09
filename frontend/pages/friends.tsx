@@ -17,7 +17,8 @@ export default function Friends() {
   const [friendUsername, setFriendUsername] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
   const [searchBy, setSearchBy] = useState<"email" | "username">("email");
-  const [requestsExpanded, setRequestsExpanded] = useState(true);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [showSentModal, setShowSentModal] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const loadFriends = useCallback(async (userId: string) => {
@@ -290,151 +291,69 @@ export default function Friends() {
             <p className="mt-2 text-emerald-700">Manage your friends and friend requests</p>
           </div>
 
-          {/* Add Friend Button */}
-          <div className="mb-8">
-            <button
-              onClick={() => setShowAddFriend(true)}
-              className="rounded-lg border border-emerald-200 bg-white px-6 py-3 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-            >
-              + Add Friend
-            </button>
-          </div>
-
-          {/* Received Friend Requests - Collapsible */}
-          <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <button
-              onClick={() => setRequestsExpanded(!requestsExpanded)}
-              className="mb-4 flex w-full items-center justify-between text-left"
-            >
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-semibold text-emerald-900">Friend Requests</h2>
+          {/* Header with Action Buttons */}
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-emerald-900">Your Friends</h2>
+            <div className="flex items-center gap-2">
+              {/* Friend Requests Button */}
+              <button
+                onClick={() => setShowPendingModal(true)}
+                className="relative rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                Requests
                 {pendingRequests.length > 0 && (
-                  <span className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white">
-                    {pendingRequests.length} new
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                    {pendingRequests.length}
                   </span>
                 )}
-              </div>
-              <span className="text-2xl text-emerald-600 transition-transform">
-                {requestsExpanded ? "▼" : "▶"}
-              </span>
-            </button>
-            {requestsExpanded && (
-              <>
-                {pendingRequests.length > 0 ? (
-                  <div className="space-y-3">
-                    {pendingRequests.map((request) => (
-                      <div
-                        key={request.friendship_id}
-                        className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-4"
-                      >
-                        <div>
-                          <p className="font-medium text-emerald-900">{request.email}</p>
-                          <p className="text-xs text-emerald-600">
-                            Sent {new Date(request.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleAcceptRequest(request.friendship_id)}
-                            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => handleRemoveFriend(request.requester_id)}
-                            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-emerald-700 italic">
-                    No pending friend requests. When someone sends you a friend request, it will appear here.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Sent Friend Requests - Always Visible */}
-          <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-emerald-900">Sent Requests</h2>
+              </button>
+              {/* Sent Requests Button */}
               <button
-                onClick={() => {
-                  if (user) {
-                    console.log("Manually refreshing sent requests...");
-                    loadSentRequests(user.id);
-                  }
-                }}
-                className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                onClick={() => setShowSentModal(true)}
+                className="relative rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
-                🔄 Refresh
+                Sent
+                {sentRequests.length > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                    {sentRequests.length}
+                  </span>
+                )}
+              </button>
+              {/* Add Friend Button */}
+              <button
+                onClick={() => setShowAddFriend(true)}
+                className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                + Add
               </button>
             </div>
-            {sentRequests.length > 0 ? (
-              <div className="space-y-3">
-                {sentRequests.map((request) => (
-                  <div
-                    key={request.friendship_id}
-                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-4"
-                  >
-                    <div>
-                      <p className="font-medium text-emerald-900">{request.email}</p>
-                      <p className="text-xs text-emerald-600">
-                        Sent {new Date(request.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-emerald-600 italic">Pending...</span>
-                      <button
-                        onClick={() => handleRemoveFriend(request.recipient_id)}
-                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div>
-                <p className="text-emerald-700 italic">
-                  No sent friend requests. When you send a friend request, it will appear here.
-                </p>
-                <p className="mt-2 text-xs text-gray-500">
-                  Debug: sentRequests.length = {sentRequests.length}, user.id = {user?.id || "none"}
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Friends List */}
           <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Your Friends</h2>
             {loadingFriends ? (
               <p className="text-emerald-700">Loading friends...</p>
             ) : friends.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {friends.map((friend) => (
                   <div
                     key={friend.friendship_id}
-                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-4"
+                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
                   >
-                    <div>
-                      <p className="font-medium text-emerald-900">{friend.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-emerald-900 truncate">
+                        @{friend.username || friend.email || "unknown"}
+                      </p>
                       <p className="text-xs text-emerald-600">
-                        Friends since {new Date(friend.created_at).toLocaleDateString()}
+                        Since {new Date(friend.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemoveFriend(friend.friend_id)}
-                      className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                      className="ml-2 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 flex-shrink-0"
+                      title="Remove friend"
                     >
-                      Remove
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -447,6 +366,144 @@ export default function Friends() {
           </div>
         </main>
       </div>
+
+      {/* Friend Requests Modal */}
+      {showPendingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-emerald-100 p-4">
+              <h2 className="text-xl font-bold text-emerald-900">Friend Requests</h2>
+              <button
+                onClick={() => setShowPendingModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {pendingRequests.length > 0 ? (
+                <div className="space-y-2">
+                  {pendingRequests.map((request) => (
+                    <div
+                      key={request.friendship_id}
+                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-emerald-900">
+                          @{request.username || request.email || "unknown"}
+                        </p>
+                        <p className="text-xs text-emerald-600">
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            handleAcceptRequest(request.friendship_id);
+                            if (pendingRequests.length === 1) {
+                              setShowPendingModal(false);
+                            }
+                          }}
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-600"
+                          title="Accept"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleRemoveFriend(request.requester_id);
+                            if (pendingRequests.length === 1) {
+                              setShowPendingModal(false);
+                            }
+                          }}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                          title="Decline"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-emerald-700 italic py-8">
+                  No pending friend requests. When someone sends you a friend request, it will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sent Requests Modal */}
+      {showSentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-emerald-100 p-4">
+              <h2 className="text-xl font-bold text-emerald-900">Sent Requests</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (user) {
+                      console.log("Manually refreshing sent requests...");
+                      loadSentRequests(user.id);
+                    }
+                  }}
+                  className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  🔄
+                </button>
+                <button
+                  onClick={() => setShowSentModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {sentRequests.length > 0 ? (
+                <div className="space-y-2">
+                  {sentRequests.map((request) => (
+                    <div
+                      key={request.friendship_id}
+                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-emerald-900">
+                          @{request.username || request.email || "unknown"}
+                        </p>
+                        <p className="text-xs text-emerald-600">
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-emerald-600 italic">Pending</span>
+                        <button
+                          onClick={() => {
+                            handleRemoveFriend(request.recipient_id);
+                            if (sentRequests.length === 1) {
+                              setShowSentModal(false);
+                            }
+                          }}
+                          className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-emerald-700 italic py-8">
+                  No sent friend requests. When you send a friend request, it will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Friend Modal */}
       {showAddFriend && (
