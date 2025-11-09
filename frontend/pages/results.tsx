@@ -291,6 +291,13 @@ export default function Results() {
       console.log("Current friends list:", friends);
     }
   }, [friends]);
+
+  // Load trip status when savedTripId changes
+  useEffect(() => {
+    if (savedTripId && user) {
+      loadTripStatus(savedTripId);
+    }
+  }, [savedTripId, user]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharingTrip, setSharingTrip] = useState(false);
   const [hotelReviewStates, setHotelReviewStates] = useState<
@@ -299,6 +306,9 @@ export default function Results() {
   const [exploreReviewStates, setExploreReviewStates] = useState<
     Record<string, { open: boolean; index: number }>
   >({});
+  const [tripStatus, setTripStatus] = useState<"draft" | "before" | "during" | "after">("draft");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
 
   const normalizedHotelKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
   const normalizedExploreKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
@@ -409,6 +419,16 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
+        if (savedTripId || storedTripId) {
+          const tripId = savedTripId || storedTripId;
+          loadTripStatus(tripId);
+        } else if (stored) {
+          const parsed: ItineraryResponse = JSON.parse(stored);
+          const tripId = (parsed as any)?.trip_id || (parsed as any)?.id;
+          if (tripId) {
+            loadTripStatus(tripId);
+          }
+        }
       }
     });
 
@@ -416,6 +436,16 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
+        if (savedTripId || storedTripId) {
+          const tripId = savedTripId || storedTripId;
+          loadTripStatus(tripId);
+        } else if (stored) {
+          const parsed: ItineraryResponse = JSON.parse(stored);
+          const tripId = (parsed as any)?.trip_id || (parsed as any)?.id;
+          if (tripId) {
+            loadTripStatus(tripId);
+          }
+        }
       }
     });
   }, [router]);
@@ -448,6 +478,100 @@ export default function Results() {
     } finally {
       setLoadingFriends(false);
       console.log("Finished loading friends");
+    }
+  };
+
+  const loadTripStatus = async (tripId: string) => {
+    if (!tripId) return;
+    try {
+      const { data, error } = await supabase
+        .from("saved_trips")
+        .select("trip_status")
+        .eq("id", tripId)
+        .single();
+
+      if (error) throw error;
+      if (data?.trip_status) {
+        setTripStatus(data.trip_status as "draft" | "before" | "during" | "after");
+      }
+    } catch (err: any) {
+      console.error("Error loading trip status:", err);
+    }
+  };
+
+  const handleUpdateTripStatus = async (newStatus: "draft" | "before" | "during" | "after") => {
+    if (!user || !savedTripId) {
+      alert("Please save the trip first before updating its status.");
+      return;
+    }
+
+    if (!user.id) {
+      alert("User ID is missing. Please log in again.");
+      return;
+    }
+
+    // For 'during' and 'after' status, require flight selection
+    if (newStatus === "during" || newStatus === "after") {
+      if (!confirmedCabinId) {
+        alert("Please select a flight option before marking as 'during' or 'after'.");
+        return;
+      }
+    }
+
+    setUpdatingStatus(true);
+    try {
+      // Get confirmed cabin data
+      const confirmedCabin = confirmedCabinId ? findCabinById.get(confirmedCabinId) : null;
+      
+      // Calculate carbon emissions and credits if we have flight data
+      let carbonEmissions: number | null = null;
+      let carbonCredits: number | null = null;
+      
+      if (confirmedCabin && (newStatus === "during" || newStatus === "after")) {
+        carbonEmissions = confirmedCabin.cabin.emissionsKg || null;
+        
+        // Calculate carbon credits: find max emissions in the same flight group, then calculate credits
+        if (carbonEmissions && confirmedCabin.maxEmission > 0) {
+          // Carbon credits = max emissions - actual emissions
+          carbonCredits = confirmedCabin.maxEmission - carbonEmissions;
+        }
+      }
+
+      console.log("Updating trip status:", {
+        trip_id: savedTripId,
+        user_id: user.id,
+        status: newStatus,
+      });
+
+      const response = await fetch("http://localhost:8000/trips/status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: savedTripId,
+          user_id: user.id,
+          status: newStatus,
+          selected_flight_id: confirmedCabinId || null,
+          selected_flight_data: confirmedCabin?.cabin || null,
+          carbon_emissions_kg: carbonEmissions,
+          carbon_credits: carbonCredits,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to update trip status" }));
+        console.error("Error updating trip status:", errorData);
+        throw new Error(errorData.detail || "Failed to update trip status");
+      }
+
+      setTripStatus(newStatus);
+      if (newStatus === "after") {
+        alert("Trip completed! Carbon emissions and credits have been recorded.");
+      }
+    } catch (err: any) {
+      console.error("Error updating trip status:", err);
+      alert(`Failed to update trip status: ${err.message}`);
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -718,6 +842,10 @@ export default function Results() {
       setSaved(true);
       setSavedTripId(data?.id || null);
       setShowSaveModal(false);
+      // Load trip status after saving
+      if (data?.id) {
+        loadTripStatus(data.id);
+      }
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
       alert(`Failed to save trip: ${err.message}`);
@@ -910,7 +1038,7 @@ export default function Results() {
         return keywords.some((keyword) => haystack.includes(keyword));
       };
 
-      attractionList.forEach((poi) => {
+      attractionList.forEach((poi, idx) => {
         if (!poi.name || !isHotelLike(poi)) return;
         pushCard({
           id: `${normalizePlaceName(poi.name)}-${idx}`,
@@ -1325,32 +1453,160 @@ export default function Results() {
                 <button
                   onClick={regenerateItinerary}
                   disabled={checkingPreferences}
-                  className="rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Regenerate itinerary with all collaborators' preferences"
                 >
-                  {checkingPreferences ? "Regenerating…" : "Refresh"}
+                  {checkingPreferences ? "🔄 Regenerating..." : "🔄 Refresh"}
                 </button>
                 {savedTripId && (
-                  <button
-                    onClick={async () => {
-                      if (user) {
-                        await loadFriends(user.id);
-                        setTimeout(() => {
+                  <>
+                    {/* Trip Status Progress Tags */}
+                    <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white/60 px-3 py-1.5">
+                      {tripStatus === "draft" ? (
+                        <span className="text-xs font-medium text-gray-500">📝 Draft</span>
+                      ) : (
+                        <>
+                          <span className={`text-xs font-medium ${tripStatus === "before" ? "text-emerald-700" : "text-emerald-500"}`}>
+                            {tripStatus === "before" ? "●" : "✓"} Before
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${tripStatus === "during" ? "text-emerald-700" : tripStatus === "after" ? "text-emerald-500" : "text-gray-400"}`}>
+                            {tripStatus === "during" ? "●" : tripStatus === "after" ? "✓" : "○"} During
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${tripStatus === "after" ? "text-emerald-700" : "text-gray-400"}`}>
+                            {tripStatus === "after" ? "●" : "○"} After
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Trip Status Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowStatusMenu(!showStatusMenu)}
+                        disabled={updatingStatus}
+                        className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          tripStatus === "after"
+                            ? "bg-emerald-600 text-white"
+                            : tripStatus === "draft"
+                            ? "border border-gray-300 bg-white/60 text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
+                            : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                        }`}
+                        title="Change trip status"
+                      >
+                        {updatingStatus
+                          ? "Updating..."
+                          : tripStatus === "draft"
+                          ? "📝 Draft ▼"
+                          : tripStatus === "before"
+                          ? "✈️ Before ▼"
+                          : tripStatus === "during"
+                          ? "✈️ During ▼"
+                          : "✓ After ▼"}
+                      </button>
+
+                      {showStatusMenu && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowStatusMenu(false)}
+                          />
+                          <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-lg border border-emerald-200 bg-white shadow-lg">
+                            <div className="py-1">
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus("draft");
+                                  setShowStatusMenu(false);
+                                }}
+                                disabled={updatingStatus}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "draft" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                              >
+                                📝 Draft {tripStatus === "draft" && "●"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus("before");
+                                  setShowStatusMenu(false);
+                                }}
+                                disabled={updatingStatus}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "before" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                              >
+                                ✈️ Before {tripStatus === "before" && "●"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus("during");
+                                  setShowStatusMenu(false);
+                                }}
+                                disabled={updatingStatus || !confirmedCabinId}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "during" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                                title={!confirmedCabinId ? "Please select a flight option first" : ""}
+                              >
+                                ✈️ During {tripStatus === "during" && "●"} {!confirmedCabinId && "(requires flight)"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus("after");
+                                  setShowStatusMenu(false);
+                                }}
+                                disabled={updatingStatus || !confirmedCabinId}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "after" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                                title={!confirmedCabinId ? "Please select a flight option first" : ""}
+                              >
+                                ✓ After {tripStatus === "after" && "●"} {!confirmedCabinId && "(requires flight)"}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        console.log("=== SHARE BUTTON CLICKED ===");
+                        console.log("Current user:", user?.id);
+                        console.log("Current friends count before reload:", friends.length);
+                        if (user) {
+                          console.log("Reloading friends for user:", user.id);
+                          await loadFriends(user.id);
+                          setTimeout(() => {
+                            console.log("Opening share modal, current friends count after reload:", friends.length);
+                            setShowShareModal(true);
+                          }, 200);
+                        } else {
+                          console.warn("No user found when clicking share button");
                           setShowShareModal(true);
-                        }, 200);
-                      } else {
-                        setShowShareModal(true);
-                      }
-                    }}
-                    disabled={sharingTrip}
-                    className="rounded-md bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Share
-                  </button>
+                        }
+                      }}
+                      disabled={sharingTrip}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        (itinerary as any)?.shared
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                          : "border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                      }`}
+                      title="Share trip"
+                    >
+                      {sharingTrip ? "Sharing..." : (itinerary as any)?.shared ? "✓ Shared" : "🔗 Share"}
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={handleSaveTrip}
                   disabled={saving || saved}
-                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                    saved
+                      ? "bg-emerald-500 text-white"
+                      : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {saved ? "Saved" : saving ? "Saving…" : "Save"}
                 </button>

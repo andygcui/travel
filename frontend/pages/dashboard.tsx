@@ -242,10 +242,10 @@ export default function Dashboard() {
     total_emissions_kg: number;
     total_credits: number;
   } | null>(null);
-  const [carbonRanking, setCarbonRanking] = useState<any[]>([]);
   const [loadingCarbonStats, setLoadingCarbonStats] = useState(false);
   const [updatingTripStatus, setUpdatingTripStatus] = useState<string | null>(null);
   const [showCompletedTrips, setShowCompletedTrips] = useState(false);
+  const [openStatusMenu, setOpenStatusMenu] = useState<string | null>(null);
   const previousPreferencesRef = useRef<string>("");
   const previousRegistrationPrefsRef = useRef<string>("");
   const previousProfileSummaryRef = useRef<string>("");
@@ -299,7 +299,6 @@ export default function Dashboard() {
         loadPendingRequests();
         loadSharedTrips(session.user.id);
         loadCarbonStats(session.user.id);
-        loadCarbonRanking(session.user.id);
       } else {
         router.push("/");
       }
@@ -321,17 +320,6 @@ export default function Dashboard() {
     }
   };
 
-  const loadCarbonRanking = async (userId: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/trips/carbon-ranking?user_id=${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCarbonRanking(data.ranking || []);
-      }
-    } catch (err) {
-      console.error("Error loading carbon ranking:", err);
-    }
-  };
 
   const handleUpdateTripStatus = async (tripId: string, newStatus: "draft" | "before" | "during" | "after", trip: SavedTrip) => {
     if (!user) return;
@@ -369,7 +357,6 @@ export default function Dashboard() {
       // Reload trips and stats
       await loadTrips(user.id);
       await loadCarbonStats(user.id);
-      await loadCarbonRanking(user.id);
       
       if (newStatus === "after") {
         alert("Trip completed! Carbon emissions and credits have been recorded.");
@@ -1253,36 +1240,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Carbon Credits Ranking */}
-          {carbonRanking.length > 0 && (
-            <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-xl font-semibold text-emerald-900">Carbon Credits Ranking</h2>
-              <div className="space-y-2">
-                {carbonRanking.map((entry, idx) => (
-                  <div
-                    key={entry.user_id}
-                    className={`flex items-center justify-between rounded-lg p-3 ${
-                      entry.user_id === user?.id
-                        ? "bg-emerald-50 border-2 border-emerald-300"
-                        : "bg-gray-50 border border-gray-200"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-emerald-600">#{entry.rank}</span>
-                      <span className="font-medium text-emerald-900">
-                        @{entry.username}
-                        {entry.user_id === user?.id && " (You)"}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-emerald-700">{entry.total_credits.toFixed(1)} credits</p>
-                      <p className="text-xs text-emerald-600">{entry.trips_count} trips</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Travel Profile Summary */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 shadow-sm">
@@ -1731,48 +1688,94 @@ export default function Dashboard() {
                     >
                       View Trip
                     </button>
-                    {/* Going Button */}
-                    <button
-                      onClick={() => {
-                        const currentStatus = trip.trip_status || "draft";
-                        if (currentStatus === "draft") {
-                          handleUpdateTripStatus(trip.id, "before", trip);
-                        } else if (currentStatus === "before") {
-                          handleUpdateTripStatus(trip.id, "during", trip);
-                        } else if (currentStatus === "during") {
-                          handleUpdateTripStatus(trip.id, "after", trip);
-                        } else {
-                          alert("Trip is already completed!");
-                        }
-                      }}
-                      disabled={updatingTripStatus === trip.id || trip.trip_status === "after"}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        trip.trip_status === "after"
-                          ? "bg-emerald-600 text-white"
+                    {/* Trip Status Dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenStatusMenu(openStatusMenu === trip.id ? null : trip.id)}
+                        disabled={updatingTripStatus === trip.id}
+                        className={`w-full rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          trip.trip_status === "after"
+                            ? "bg-emerald-600 text-white"
+                            : (trip.trip_status || "draft") === "draft"
+                            ? "border border-gray-300 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
+                            : "border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                        }`}
+                        title="Change trip status"
+                      >
+                        {updatingTripStatus === trip.id
+                          ? "Updating..."
                           : (trip.trip_status || "draft") === "draft"
-                          ? "border border-gray-300 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
-                          : "border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
-                      }`}
-                      title={
-                        (trip.trip_status || "draft") === "draft"
-                          ? "Mark as going (planning to go)"
+                          ? "📝 Draft ▼"
                           : (trip.trip_status || "draft") === "before"
-                          ? "Mark as during trip (requires flight selection)"
+                          ? "✈️ Before ▼"
                           : (trip.trip_status || "draft") === "during"
-                          ? "Mark trip as completed"
-                          : "Trip completed"
-                      }
-                    >
-                      {updatingTripStatus === trip.id
-                        ? "Updating..."
-                        : (trip.trip_status || "draft") === "draft"
-                        ? "✈️ Mark as Going"
-                        : (trip.trip_status || "draft") === "before"
-                        ? "✈️ Going"
-                        : (trip.trip_status || "draft") === "during"
-                        ? "✓ Complete Trip"
-                        : "✓ Completed"}
-                    </button>
+                          ? "✈️ During ▼"
+                          : "✓ After ▼"}
+                      </button>
+                      
+                      {openStatusMenu === trip.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOpenStatusMenu(null)}
+                          />
+                          <div className="absolute left-0 top-full z-20 mt-2 w-48 rounded-lg border border-emerald-200 bg-white shadow-lg">
+                            <div className="py-1">
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus(trip.id, "draft", trip);
+                                  setOpenStatusMenu(null);
+                                }}
+                                disabled={updatingTripStatus === trip.id}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  (trip.trip_status || "draft") === "draft" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                              >
+                                📝 Draft {(trip.trip_status || "draft") === "draft" && "●"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus(trip.id, "before", trip);
+                                  setOpenStatusMenu(null);
+                                }}
+                                disabled={updatingTripStatus === trip.id}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  (trip.trip_status || "draft") === "before" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                              >
+                                ✈️ Before {(trip.trip_status || "draft") === "before" && "●"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus(trip.id, "during", trip);
+                                  setOpenStatusMenu(null);
+                                }}
+                                disabled={updatingTripStatus === trip.id || !trip.selected_flight_id}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  (trip.trip_status || "draft") === "during" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                                title={!trip.selected_flight_id ? "Please select a flight option first" : ""}
+                              >
+                                ✈️ During {(trip.trip_status || "draft") === "during" && "●"} {!trip.selected_flight_id && "(requires flight)"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleUpdateTripStatus(trip.id, "after", trip);
+                                  setOpenStatusMenu(null);
+                                }}
+                                disabled={updatingTripStatus === trip.id || !trip.selected_flight_id}
+                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  (trip.trip_status || "draft") === "after" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                }`}
+                                title={!trip.selected_flight_id ? "Please select a flight option first" : ""}
+                              >
+                                ✓ After {(trip.trip_status || "draft") === "after" && "●"} {!trip.selected_flight_id && "(requires flight)"}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-4 text-xs text-gray-400">
@@ -1872,17 +1875,88 @@ export default function Dashboard() {
                           >
                             View Trip
                           </button>
-                          {/* Mark as Going Button - moves draft to Plans section */}
-                          <button
-                            onClick={() => {
-                              handleUpdateTripStatus(trip.id, "before", trip);
-                            }}
-                            disabled={updatingTripStatus === trip.id}
-                            className="rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
-                            title="Mark as going (will move to Plans section)"
-                          >
-                            {updatingTripStatus === trip.id ? "Updating..." : "✈️ Mark as Going"}
-                          </button>
+                          {/* Trip Status Dropdown */}
+                          <div className="relative">
+                            <button
+                              onClick={() => setOpenStatusMenu(openStatusMenu === trip.id ? null : trip.id)}
+                              disabled={updatingTripStatus === trip.id}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:border-emerald-300 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              title="Change trip status"
+                            >
+                              {updatingTripStatus === trip.id
+                                ? "Updating..."
+                                : (trip.trip_status || "draft") === "draft"
+                                ? "📝 Draft ▼"
+                                : (trip.trip_status || "draft") === "before"
+                                ? "✈️ Before ▼"
+                                : (trip.trip_status || "draft") === "during"
+                                ? "✈️ During ▼"
+                                : "✓ After ▼"}
+                            </button>
+                            
+                            {openStatusMenu === trip.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => setOpenStatusMenu(null)}
+                                />
+                                <div className="absolute left-0 top-full z-20 mt-2 w-48 rounded-lg border border-emerald-200 bg-white shadow-lg">
+                                  <div className="py-1">
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateTripStatus(trip.id, "draft", trip);
+                                        setOpenStatusMenu(null);
+                                      }}
+                                      disabled={updatingTripStatus === trip.id}
+                                      className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                        (trip.trip_status || "draft") === "draft" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                      }`}
+                                    >
+                                      📝 Draft {(trip.trip_status || "draft") === "draft" && "●"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateTripStatus(trip.id, "before", trip);
+                                        setOpenStatusMenu(null);
+                                      }}
+                                      disabled={updatingTripStatus === trip.id}
+                                      className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                        (trip.trip_status || "draft") === "before" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                      }`}
+                                    >
+                                      ✈️ Before {(trip.trip_status || "draft") === "before" && "●"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateTripStatus(trip.id, "during", trip);
+                                        setOpenStatusMenu(null);
+                                      }}
+                                      disabled={updatingTripStatus === trip.id || !trip.selected_flight_id}
+                                      className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                        (trip.trip_status || "draft") === "during" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                      }`}
+                                      title={!trip.selected_flight_id ? "Please select a flight option first" : ""}
+                                    >
+                                      ✈️ During {(trip.trip_status || "draft") === "during" && "●"} {!trip.selected_flight_id && "(requires flight)"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        handleUpdateTripStatus(trip.id, "after", trip);
+                                        setOpenStatusMenu(null);
+                                      }}
+                                      disabled={updatingTripStatus === trip.id || !trip.selected_flight_id}
+                                      className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                        (trip.trip_status || "draft") === "after" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                      }`}
+                                      title={!trip.selected_flight_id ? "Please select a flight option first" : ""}
+                                    >
+                                      ✓ After {(trip.trip_status || "draft") === "after" && "●"} {!trip.selected_flight_id && "(requires flight)"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         <div className="mt-4 text-xs text-gray-400">
