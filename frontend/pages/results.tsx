@@ -259,7 +259,7 @@ export default function Results() {
   const [tripName, setTripName] = useState("");
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [flightSort, setFlightSort] = useState<"price" | "emissions">("emissions");
+  const [flightSort, setFlightSort] = useState<"priceAsc" | "priceDesc">("priceAsc");
   const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
   const [selectedCabinId, setSelectedCabinId] = useState<string | null>(null);
   const [confirmedCabinId, setConfirmedCabinId] = useState<string | null>(null);
@@ -387,6 +387,7 @@ export default function Results() {
     setSelectedCabinId(null);
     setConfirmedCabinId(null);
     setExpandedFlightId(null);
+    setShowAllFlights(false);
   }, [itinerary?.destination, itinerary?.start_date, itinerary?.end_date]);
 
   const handleSaveTrip = async () => {
@@ -754,15 +755,16 @@ export default function Results() {
   const sortedFlightGroups = useMemo(() => {
     const clone = [...groupedFlights];
     clone.sort((a, b) => {
-      if (flightSort === "price") {
+      if (flightSort === "priceAsc") {
         return a.lowestPrice - b.lowestPrice;
       }
-      const aEmissions = a.lowestEmissions ?? Infinity;
-      const bEmissions = b.lowestEmissions ?? Infinity;
-      return aEmissions - bEmissions;
+      return b.lowestPrice - a.lowestPrice;
     });
     return clone;
   }, [groupedFlights, flightSort]);
+
+  const [showAllFlights, setShowAllFlights] = useState(false);
+  const flightsToRender = showAllFlights ? sortedFlightGroups : sortedFlightGroups.slice(0, 3);
 
   const findCabinById = useMemo(() => {
     const map = new Map<string, { cabin: FlightCabinOption; group: FlightGroup; maxEmission: number }>();
@@ -1020,11 +1022,11 @@ export default function Results() {
                 <span className="mb-1 text-xs uppercase tracking-[0.2em] text-emerald-500">Sort by</span>
                 <select
                   value={flightSort}
-                  onChange={(e) => setFlightSort(e.target.value as "price" | "emissions")}
+                  onChange={(e) => setFlightSort(e.target.value as "priceAsc" | "priceDesc")}
                   className="rounded-full border border-emerald-200 bg-white/70 px-4 py-2 text-sm text-[#0b3d2e] shadow-sm focus:border-emerald-400 focus:outline-none"
                 >
-                  <option value="price">Lowest price</option>
-                  <option value="emissions">Lowest emissions</option>
+                  <option value="priceAsc">Lowest price</option>
+                  <option value="priceDesc">Highest price</option>
                 </select>
               </label>
             </div>
@@ -1032,7 +1034,7 @@ export default function Results() {
 
   <div className="space-y-4">
     {sortedFlightGroups.length > 0 ? (
-      sortedFlightGroups.map((flight) => {
+      flightsToRender.map((flight) => {
         const isExpanded = expandedFlightId === flight.groupId;
         const durationText = (() => {
           const depart = new Date(flight.departure);
@@ -1197,6 +1199,17 @@ export default function Results() {
       </div>
     )}
   </div>
+          {sortedFlightGroups.length > 3 && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowAllFlights((prev) => !prev)}
+                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
+              >
+                {showAllFlights ? "Show fewer flights" : "See more flights"}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Accommodations */}
