@@ -1209,10 +1209,10 @@ export default function Results() {
                   <div className="p-5 space-y-3">
                     <div>
                       <h3 className="text-lg font-semibold text-[#0b3d2e]">{hotel.name}</h3>
-                      {hotel.rating !== undefined && (
+                      {hotel.rating !== undefined && hotel.rating !== null && typeof hotel.rating === 'number' && (
                         <p className="text-sm text-emerald-600/80">
                           ⭐ {hotel.rating.toFixed(1)}
-                          {hotel.reviewCount !== undefined && (
+                          {hotel.reviewCount !== undefined && hotel.reviewCount !== null && (
                             <span className="ml-2 text-xs text-emerald-500/80">
                               ({hotel.reviewCount.toLocaleString()} reviews)
                             </span>
@@ -1410,7 +1410,7 @@ export default function Results() {
                     />
                   )}
                   {poi?.rating && (
-                    <p className="text-sm text-emerald-600/80">⭐ {poi.rating.toFixed(1)} / 5.0</p>
+                    <p className="text-sm text-emerald-600/80">⭐ {typeof poi.rating === 'number' ? poi.rating.toFixed(1) : poi.rating} / 5.0</p>
                   )}
         </div>
               );
