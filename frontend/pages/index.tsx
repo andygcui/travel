@@ -233,6 +233,10 @@ export default function Home() {
         }
       }
 
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+
       const response = await fetch("http://localhost:8000/generate_itinerary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,7 +253,10 @@ export default function Home() {
           dietary_restrictions: dietaryRestrictions,
           mode,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Failed to generate itinerary" }));
@@ -268,7 +275,13 @@ export default function Home() {
       }));
       router.push("/results");
     } catch (err: any) {
-      setError(err.message || "Unable to reach GreenTrip backend. Make sure it is running.");
+      if (err.name === 'AbortError') {
+        setError("Request timed out. The itinerary generation is taking longer than expected. Please try again.");
+      } else if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        setError("Unable to reach the backend server. Please make sure the backend is running on http://localhost:8000");
+      } else {
+        setError(err.message || "Unable to reach GreenTrip backend. Make sure it is running.");
+      }
     } finally {
       setLoading(false);
     }
@@ -298,28 +311,28 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <a
                 href="/emissions"
-                className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
               >
-                🌍 Emissions Guide
+                Emissions Guide
               </a>
               {user ? (
                 <>
                   <a
                     href="/friends"
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    👥 Friends
+                    Friends
                   </a>
                   <a
                     href="/dashboard"
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    📊 Dashboard
+                    Dashboard
                   </a>
                   <span className="text-sm text-white/80">{user.email}</span>
                   <button
                     onClick={handleSignOut}
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
                     Sign Out
                   </button>
@@ -343,7 +356,7 @@ export default function Home() {
           <div className="absolute inset-0 bg-black/50" />
           <div className="mx-auto max-w-4xl text-center relative z-10">
             <div className="hero-text space-y-6">
-              <div className="reveal mb-4 text-5xl">🌍</div>
+              {/* Removed emoji for cleaner look */}
               <h1 className="reveal text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
                 Smarter Trips. Smaller Footprints.
               </h1>
@@ -560,7 +573,7 @@ export default function Home() {
             {/* Icon Cards */}
             <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">🌍</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Eco Optimization
                 </h3>
@@ -570,7 +583,7 @@ export default function Home() {
                 </p>
               </div>
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">💸</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Value Transparency
                 </h3>
@@ -580,7 +593,7 @@ export default function Home() {
                 </p>
               </div>
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">✈️</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Personalized Planning
                 </h3>

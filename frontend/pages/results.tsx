@@ -1206,7 +1206,7 @@ export default function Results() {
                     </span>
             </div>
                   <p className="mt-1 text-xs text-emerald-600/80">
-                    {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)} · {durationText}
+                    {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)}
                   </p>
                   <p className="mt-1 text-xs text-emerald-600/80">
                     Operated by {flight.carrier}

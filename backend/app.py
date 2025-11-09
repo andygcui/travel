@@ -116,16 +116,34 @@ async def check_username(username: str):
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
         
-        # Check if username exists
+        # Normalize username: trim whitespace and convert to lowercase for comparison
+        normalized_username = username.strip().lower()
+        
+        if not normalized_username:
+            return {"available": False, "message": "Username cannot be empty"}
+        
+        logger.info(f"Checking username availability for: '{username}' (normalized: '{normalized_username}')")
+        
+        # Check if username exists (case-insensitive, excluding NULL and empty strings)
         try:
-            result = supabase.table("user_preferences").select("user_id").eq(
-                "username", username
-            ).execute()
+            # Get all usernames and check case-insensitively
+            # First try to get all non-null usernames
+            result = supabase.table("user_preferences").select("user_id, username").execute()
             
-            if result.data and len(result.data) > 0:
-                return {"available": False, "message": "Username already taken"}
-            else:
-                return {"available": True, "message": "Username available"}
+            # Check if any existing username matches (case-insensitive)
+            if result.data:
+                for record in result.data:
+                    existing_username_raw = record.get("username")
+                    # Skip NULL or empty usernames
+                    if not existing_username_raw or existing_username_raw.strip() == "":
+                        continue
+                    existing_username = existing_username_raw.strip().lower()
+                    if existing_username == normalized_username:
+                        logger.info(f"Username '{username}' is already taken by user {record.get('user_id')}")
+                        return {"available": False, "message": "Username already taken"}
+            
+            logger.info(f"Username '{username}' is available")
+            return {"available": True, "message": "Username available"}
         except Exception as db_error:
             # If column doesn't exist yet, assume username is available
             error_str = str(db_error)
@@ -133,6 +151,7 @@ async def check_username(username: str):
                 logger.warning(f"Username column doesn't exist yet, assuming username is available: {username}")
                 return {"available": True, "message": "Username available (column not created yet)"}
             else:
+                logger.error(f"Database error checking username: {db_error}", exc_info=True)
                 raise
     except HTTPException:
         raise
@@ -161,14 +180,29 @@ async def save_user_preferences(request: SaveUserPreferencesRequest):
         
         # Add username if provided
         if request.username:
-            # Check if username is already taken by another user
+            # Normalize username for case-insensitive comparison
+            normalized_username = request.username.strip().lower()
+            
+            # Check if username is already taken by another user (case-insensitive)
             try:
-                existing_username = supabase.table("user_preferences").select("user_id").eq(
-                    "username", request.username
-                ).neq("user_id", request.user_id).execute()
+                # Get all usernames and check case-insensitively
+                all_users = supabase.table("user_preferences").select("user_id, username").execute()
                 
-                if existing_username.data and len(existing_username.data) > 0:
-                    raise HTTPException(status_code=400, detail="Username already taken")
+                if all_users.data:
+                    for record in all_users.data:
+                        # Skip if it's the same user
+                        if record.get("user_id") == request.user_id:
+                            continue
+                        
+                        existing_username_raw = record.get("username")
+                        # Skip NULL or empty usernames
+                        if not existing_username_raw or existing_username_raw.strip() == "":
+                            continue
+                        
+                        existing_username = existing_username_raw.strip().lower()
+                        if existing_username == normalized_username:
+                            logger.warning(f"Username '{request.username}' is already taken by user {record.get('user_id')}")
+                            raise HTTPException(status_code=400, detail="Username already taken")
             except Exception as db_error:
                 # If column doesn't exist yet, skip the check but still try to save
                 error_str = str(db_error)
