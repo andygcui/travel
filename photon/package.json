@@ -1,16 +1,21 @@
 {
   "name": "photon",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Photon iMessage integration for travel app",
+  "main": "imessage-service.mjs",
+  "type": "module",
   "scripts": {
+    "install": "npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["photon", "imessage", "travel"],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@photon-ai/imessage-kit": "^1.1.3",
     "better-sqlite3": "^12.4.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

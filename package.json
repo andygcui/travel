@@ -13,7 +13,14 @@
   "description": "A full-stack web application that generates optimized eco-friendly travel itineraries using AI and live API integrations.",
   "main": "index.js",
   "scripts": {
+    "install": "npm install && cd photon && npm install && cd ../backend && npm install && cd ../frontend && npm install",
+    "install:photon": "cd photon && npm install",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "repository": {
     "type": "git",

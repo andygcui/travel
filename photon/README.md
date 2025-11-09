@@ -18,13 +18,29 @@ Photon provides two main components:
 
 ## Installation
 
-Dependencies are already installed in the root `package.json` and `photon/package.json`:
+### Quick Install
+
+From the project root:
 
 ```bash
 npm install
 # or
-bun install
+npm run install:photon
 ```
+
+This installs:
+- `@photon-ai/imessage-kit` - iMessage SDK
+- `better-sqlite3` - SQLite driver (for Node.js)
+
+**Note:** If using Bun, `better-sqlite3` is not needed as Bun has built-in SQLite support.
+
+### Detailed Setup
+
+See [PHOTON_SETUP.md](../PHOTON_SETUP.md) for complete setup instructions including:
+- System permissions
+- Environment variables
+- Troubleshooting
+- Bun vs Node.js setup
 
 ## Files
 

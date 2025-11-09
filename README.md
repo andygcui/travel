@@ -15,6 +15,26 @@ A full-stack web application that generates optimized eco-friendly travel itiner
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- **Node.js >= 18.0.0** (for Photon iMessage integration)
+- **Python 3.11+** (for backend)
+- **macOS** (required for Photon iMessage features)
+
+### Install All Dependencies
+
+From the root directory:
+
+```bash
+# Install all npm dependencies (root, photon, backend, frontend)
+npm install
+
+# Or install individually:
+npm run install:photon    # Photon iMessage dependencies
+npm run install:backend  # Backend npm dependencies (if any)
+npm run install:frontend # Frontend dependencies
+```
+
 ### Backend Setup
 
 ```bash
@@ -35,6 +55,21 @@ npm run dev
 ```
 
 The frontend will run at http://localhost:3000
+
+### Photon iMessage Setup (macOS only)
+
+The Photon integration requires macOS and Node.js:
+
+```bash
+cd photon
+npm install
+```
+
+**Required dependencies:**
+- `@photon-ai/imessage-kit` - iMessage SDK
+- `better-sqlite3` - SQLite driver for Node.js
+
+**Note:** If using Bun instead of Node.js, `better-sqlite3` is not needed as Bun has built-in SQLite support.
 
 ## 🔐 Environment Variables
 
