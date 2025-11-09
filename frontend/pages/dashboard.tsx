@@ -1241,222 +1241,228 @@ export default function Dashboard() {
           )}
 
 
-          {/* Travel Profile Summary */}
+          {/* Travel Profile - Combined Preferences */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 shadow-sm">
-            <h2 className="mb-3 text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
-            {loadingProfile ? (
-              <p className="text-emerald-700">Loading your profile...</p>
-            ) : profileSummary && profileSummary.trim() !== "" && !profileSummary.includes("Unable to") ? (
-              <p className="text-emerald-800 leading-relaxed">{profileSummary}</p>
-            ) : (
-              <p className="text-emerald-700 italic">
-                No profile summary yet. Start planning trips and using the chat feature to build your travel profile!
-              </p>
-            )}
-          </div>
-
-          {/* Registration Preferences */}
-          {loadingRegistrationPrefs ? (
-            <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-              <p className="text-emerald-700">Loading registration preferences...</p>
-            </div>
-          ) : (
-            (registrationPrefs &&
-            (registrationPrefs.preferences?.length > 0 ||
-             registrationPrefs.likes?.length > 0 ||
-             registrationPrefs.dislikes?.length > 0 ||
-                registrationPrefs.dietary_restrictions?.length > 0)) ? (
-              <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-emerald-900">Registration Preferences</h2>
-                  <button
-                    onClick={() => {
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
+                {loadingProfile ? (
+                  <p className="mt-1 text-sm text-emerald-600">Loading profile summary...</p>
+                ) : profileSummary && profileSummary.trim() !== "" && !profileSummary.includes("Unable to") ? (
+                  <p className="mt-2 text-sm text-emerald-800 leading-relaxed">{profileSummary}</p>
+                ) : (
+                  <p className="mt-1 text-sm text-emerald-600 italic">
+                    No profile summary yet. Start planning trips and using the chat feature to build your travel profile!
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (registrationPrefs &&
+                      (registrationPrefs.preferences?.length > 0 ||
+                       registrationPrefs.likes?.length > 0 ||
+                       registrationPrefs.dislikes?.length > 0 ||
+                       registrationPrefs.dietary_restrictions?.length > 0)) {
                       // Load current preferences into editing state
                       setEditingPreferences(registrationPrefs.preferences || []);
                       setEditingLikes(registrationPrefs.likes || []);
                       setEditingDislikes(registrationPrefs.dislikes || []);
                       setEditingDietary(registrationPrefs.dietary_restrictions || []);
-                      setShowEditRegistrationPrefs(true);
-                    }}
-                    className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-                  >
-                    Edit
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {registrationPrefs.preferences && registrationPrefs.preferences.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                        Interests
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {registrationPrefs.preferences.map((pref: string, idx: number) => (
-                          <span
-                            key={idx}
-                            className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
-                          >
-                            {pref}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {registrationPrefs.likes && registrationPrefs.likes.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                        Things You Like
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {registrationPrefs.likes.map((like: string, idx: number) => (
-                          <span
-                            key={idx}
-                            className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800"
-                          >
-                            {like}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {registrationPrefs.dislikes && registrationPrefs.dislikes.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                        Things You Dislike
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {registrationPrefs.dislikes.map((dislike: string, idx: number) => (
-                          <span
-                            key={idx}
-                            className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800"
-                          >
-                            {dislike}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {registrationPrefs.dietary_restrictions && registrationPrefs.dietary_restrictions.length > 0 && (
-                    <div>
-                      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                        Dietary Restrictions
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {registrationPrefs.dietary_restrictions.map((diet: string, idx: number) => (
-                          <span
-                            key={idx}
-                            className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-800"
-                          >
-                            {diet}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-emerald-900">Registration Preferences</h2>
-                  <button
-                    onClick={() => {
+                    } else {
                       // Initialize empty preferences for editing
                       setEditingPreferences([]);
                       setEditingLikes([]);
                       setEditingDislikes([]);
                       setEditingDietary([]);
-                      setShowEditRegistrationPrefs(true);
-                    }}
-                    className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-                  >
-                    Add Preferences
-                  </button>
-                </div>
-                <p className="text-emerald-700 italic">
-                  No registration preferences yet. Click "Add Preferences" to set your travel preferences!
-                </p>
+                    }
+                    setShowEditRegistrationPrefs(true);
+                  }}
+                  className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  {registrationPrefs &&
+                  (registrationPrefs.preferences?.length > 0 ||
+                   registrationPrefs.likes?.length > 0 ||
+                   registrationPrefs.dislikes?.length > 0 ||
+                   registrationPrefs.dietary_restrictions?.length > 0)
+                    ? "Edit Registration Preferences"
+                    : "Add Registration Preferences"}
+                </button>
+                <button
+                  onClick={() => setShowPreferencesChat(true)}
+                  className="rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                >
+                  Tell Me About Your Preferences
+                </button>
               </div>
-            )
-          )}
-
-          {/* Chat-Learned Preferences */}
-          <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-emerald-900">Chat-Learned Preferences</h2>
-              <button
-                onClick={() => setShowPreferencesChat(true)}
-                className="rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
-              >
-                Tell Me More About Your Preferences
-              </button>
             </div>
-            {loadingPreferences ? (
+
+            {loadingRegistrationPrefs || loadingPreferences ? (
               <p className="text-emerald-700">Loading preferences...</p>
-            ) : preferences ? (
-              <div className="space-y-4">
-                {preferences.long_term && preferences.long_term.length > 0 && (
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                      Long-term Preferences
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {preferences.long_term.map((pref: any, idx: number) => (
-                        <span
-                          key={idx}
-                          className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
-                        >
-                          {pref.preference_value} ({pref.frequency}x)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {preferences.frequent_trip_specific && preferences.frequent_trip_specific.length > 0 && (
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                      Frequent Trip Preferences
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {preferences.frequent_trip_specific.map((pref: any, idx: number) => (
-                        <span
-                          key={idx}
-                          className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
-                        >
-                          {pref.preference_value} ({pref.frequency}x)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {preferences.temporal && preferences.temporal.length > 0 && (
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
-                      Temporal Preferences
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {preferences.temporal.map((pref: any, idx: number) => (
-                        <span
-                          key={idx}
-                          className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
-                        >
-                          {pref.preference_value} ({pref.frequency}x)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(!preferences.long_term || preferences.long_term.length === 0) &&
-                  (!preferences.frequent_trip_specific || preferences.frequent_trip_specific.length === 0) &&
-                  (!preferences.temporal || preferences.temporal.length === 0) && (
-                    <p className="text-emerald-700 italic">
-                      No chat-learned preferences yet. Use the chat feature when planning trips to start building your profile!
-                    </p>
-                  )}
-              </div>
             ) : (
-              <p className="text-emerald-700 italic">
-                No chat-learned preferences yet. Use the chat feature when planning trips to start building your profile!
-              </p>
+              <div className="space-y-6">
+                {/* Registration Preferences */}
+                {registrationPrefs &&
+                (registrationPrefs.preferences?.length > 0 ||
+                 registrationPrefs.likes?.length > 0 ||
+                 registrationPrefs.dislikes?.length > 0 ||
+                 registrationPrefs.dietary_restrictions?.length > 0) ? (
+                  <div>
+                    <h3 className="mb-3 text-lg font-semibold text-emerald-800">Registration Preferences</h3>
+                    <div className="space-y-4">
+                      {registrationPrefs.preferences && registrationPrefs.preferences.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Interests
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {registrationPrefs.preferences.map((pref: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                              >
+                                {pref}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {registrationPrefs.likes && registrationPrefs.likes.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Things You Like
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {registrationPrefs.likes.map((like: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800"
+                              >
+                                {like}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {registrationPrefs.dislikes && registrationPrefs.dislikes.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Things You Dislike
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {registrationPrefs.dislikes.map((dislike: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800"
+                              >
+                                {dislike}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {registrationPrefs.dietary_restrictions && registrationPrefs.dietary_restrictions.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Dietary Restrictions
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {registrationPrefs.dietary_restrictions.map((diet: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-800"
+                              >
+                                {diet}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold text-emerald-800">Registration Preferences</h3>
+                    <p className="text-sm text-emerald-600 italic">
+                      No registration preferences yet. Click "Add Registration Preferences" to set your travel preferences!
+                    </p>
+                  </div>
+                )}
+
+                {/* Chat-Learned Preferences */}
+                {preferences ? (
+                  <div>
+                    <h3 className="mb-3 text-lg font-semibold text-emerald-800">Chat-Learned Preferences</h3>
+                    <div className="space-y-4">
+                      {preferences.long_term && preferences.long_term.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Long-term Preferences
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {preferences.long_term.map((pref: any, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                              >
+                                {pref.preference_value} ({pref.frequency}x)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {preferences.frequent_trip_specific && preferences.frequent_trip_specific.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Frequent Trip Preferences
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {preferences.frequent_trip_specific.map((pref: any, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                              >
+                                {pref.preference_value} ({pref.frequency}x)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {preferences.temporal && preferences.temporal.length > 0 && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                            Temporal Preferences
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {preferences.temporal.map((pref: any, idx: number) => (
+                              <span
+                                key={idx}
+                                className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                              >
+                                {pref.preference_value} ({pref.frequency}x)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(!preferences.long_term || preferences.long_term.length === 0) &&
+                        (!preferences.frequent_trip_specific || preferences.frequent_trip_specific.length === 0) &&
+                        (!preferences.temporal || preferences.temporal.length === 0) && (
+                          <p className="text-sm text-emerald-600 italic">
+                            No chat-learned preferences yet. Click "Tell Me About Your Preferences" to start building your profile!
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold text-emerald-800">Chat-Learned Preferences</h3>
+                    <p className="text-sm text-emerald-600 italic">
+                      No chat-learned preferences yet. Click "Tell Me About Your Preferences" to start building your profile!
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
