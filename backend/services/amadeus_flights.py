@@ -121,15 +121,19 @@ def _total_distance_km(segments: List[FlightSegment]) -> float:
 
 
 def _base_emission_factor(distance_km: float) -> float:
-    """Return kg CO2 per passenger-km for economy, using DEFRA guidance."""
+    """Return kg CO2 per passenger-km for economy.
+
+    Factors derived from ICAO/DEFRA blended averages, incorporating a modest
+    radiative forcing uplift (≈1.3x) but tuned to keep medium-haul flights
+    within widely reported ranges (~250–450 kg per passenger round-trip).
+    """
     if distance_km <= 1500:
-        factor = 0.158
+        factor = 0.115  # short-haul
     elif distance_km <= 3500:
-        factor = 0.111
+        factor = 0.095  # medium-haul
     else:
-        factor = 0.102
-    # Apply radiative forcing index (approximated at 1.9)
-    return factor * 1.9
+        factor = 0.082  # long-haul
+    return factor * 1.3
 
 
 def _estimate_emissions(distance_km: float, cabin: str) -> float:
@@ -137,6 +141,42 @@ def _estimate_emissions(distance_km: float, cabin: str) -> float:
     multiplier = CABIN_VARIANTS.get(cabin.lower(), {"emission_multiplier": 1.0})["emission_multiplier"]
     emissions = distance_km * base_factor * multiplier
     return round(emissions, 1)
+
+
+def _create_cabin_flights(
+    segments: List[FlightSegment],
+    currency: str,
+    distance_km: float,
+    reference_price: float,
+    reference_cabin: Optional[str],
+    booking_url: Optional[str] = None,
+) -> List[FlightOption]:
+    """Generate flight options for all cabin classes based on a reference fare."""
+    base_cabin = (reference_cabin or "economy").lower()
+    base_multipliers = CABIN_VARIANTS.get(base_cabin, CABIN_VARIANTS["economy"])
+    base_price_multiplier = base_multipliers["price_multiplier"] or 1.0
+
+    # Derive an approximate economy price from the provided fare
+    economy_price = reference_price / base_price_multiplier if base_price_multiplier else reference_price
+    if economy_price <= 0:
+        economy_price = reference_price
+
+    cabin_flights: List[FlightOption] = []
+    for cabin_name, modifiers in CABIN_VARIANTS.items():
+        price = round(economy_price * modifiers["price_multiplier"], 2)
+        emissions = _estimate_emissions(distance_km, cabin_name)
+        cabin_flights.append(
+            FlightOption(
+                id=str(uuid.uuid4()),
+                price=price,
+                currency=currency,
+                segments=[segment.copy(deep=True) for segment in segments],
+                booking_url=booking_url,
+                emissions_kg=emissions,
+                cabin=cabin_name,
+            )
+        )
+    return cabin_flights
 
 
 async def get_amadeus_token() -> Optional[str]:
@@ -236,16 +276,15 @@ async def fetch_flights_amadeus(
                         cabin = fare_details[0].get("cabin", None)
                 cabin_label = cabin.lower() if isinstance(cabin, str) else "economy"
                 distance_km = _total_distance_km(segments)
-                emissions = _estimate_emissions(distance_km, cabin_label)
-                flights.append(
-                    FlightOption(
-                        id=str(uuid.uuid4()),
-                        price=price,
-                        currency="USD",
-                        segments=segments,
-                        booking_url=offer.get("links", {}).get("flightOffers", ""),
-                        emissions_kg=emissions,
-                        cabin=cabin_label,
+                booking_url = offer.get("links", {}).get("flightOffers", "")
+                flights.extend(
+                    _create_cabin_flights(
+                        segments,
+                        "USD",
+                        distance_km,
+                        price,
+                        cabin_label,
+                        booking_url=booking_url,
                     )
                 )
             
@@ -311,19 +350,15 @@ def _fallback_flights(
         total_distance_km = _total_distance_km(segments)
         base_price = base_prices[i]
 
-        for cabin_name, modifiers in CABIN_VARIANTS.items():
-            adjusted_price = round(base_price * modifiers["price_multiplier"], 2)
-            emissions = _estimate_emissions(total_distance_km, cabin_name)
-            options.append(
-                FlightOption(
-                    id=str(uuid.uuid4()),
-                    price=adjusted_price,
-                    currency="USD",
-                    segments=[seg.copy(deep=True) for seg in segments],
-                    emissions_kg=emissions,
-                    cabin=cabin_name,
-                )
+        options.extend(
+            _create_cabin_flights(
+                segments,
+                "USD",
+                total_distance_km,
+                base_price,
+                "economy",
             )
+        )
 
     # Sort flights by price ascending for consistent display
     options.sort(key=lambda opt: opt.price)
