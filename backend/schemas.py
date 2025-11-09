@@ -93,6 +93,7 @@ class FlightOption(BaseModel):
     segments: List[FlightSegment]
     refundable_until: Optional[datetime] = None
     emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions in kg")
+    cabin: Optional[str] = Field(default=None, description="Cabin class (economy, premium, business, first)")
 
 
 class GreenTripFlightOption(BaseModel):
@@ -106,6 +107,7 @@ class GreenTripFlightOption(BaseModel):
     currency: str = "USD"
     eco_score: Optional[float] = Field(default=None, description="0-100 eco score (higher is better)")
     emissions_kg: Optional[float] = Field(default=None, description="CO₂ emissions in kg")
+    cabin: Optional[str] = Field(default=None, description="Cabin class for display")
 
 
 class LodgingOption(BaseModel):
@@ -259,6 +261,7 @@ class GreenTripItineraryResponse(BaseModel):
     rationale: str
     eco_score: Optional[float] = Field(default=None, description="0-100 sustainability score")
     flights: List[GreenTripFlightOption] = Field(default_factory=list, description="Flight summaries for display")
+    hotels: List[LodgingOption] = Field(default_factory=list, description="Lodging options for the itinerary")
     day_weather: List[DayWeather] = Field(default_factory=list, description="Weather snapshots for each day")
     attractions: List[PointOfInterest] = Field(
         default_factory=list, description="Curated attractions with imagery and reviews"

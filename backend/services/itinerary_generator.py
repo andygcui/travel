@@ -270,6 +270,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         rationale=rationale,
         eco_score=eco_score,
         flights=flight_summaries,
+        hotels=hotels,
         day_weather=daypart_weather,
         attractions=attractions,
         day_attractions=day_attraction_bundles,
@@ -342,6 +343,7 @@ def _fallback_itinerary(
         rationale="Fallback itinerary generated due to API unavailability.",
         eco_score=max(0, 100 - (total_emissions / 10)),
         flights=_summarize_flights(flights),
+        hotels=hotels,
         day_weather=daypart_weather or _fallback_daypart_weather_list(start_date, end_date),
         attractions=attractions if attractions else attraction_pool,
         day_attractions=day_attraction_bundles,
@@ -417,6 +419,7 @@ def _summarize_flights(flights: List[FlightOption]) -> List[GreenTripFlightOptio
                 currency=option.currency,
                 eco_score=_compute_flight_eco_score(option.emissions_kg),
                 emissions_kg=option.emissions_kg,
+                cabin=option.cabin,
             )
         )
     return summaries

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -32,6 +33,28 @@ interface FlightOption {
   currency?: string;
   eco_score?: number;
   emissions_kg?: number;
+  cabin?: string;
+}
+
+interface FlightCabinOption {
+  id: string;
+  cabin: string;
+  price: number;
+  currency: string;
+  emissionsKg?: number | null;
+  ecoScore?: number | null;
+}
+
+interface FlightGroup {
+  groupId: string;
+  carrier: string;
+  origin: string;
+  destination: string;
+  departure: string;
+  arrival: string;
+  cabins: FlightCabinOption[];
+  lowestPrice: number;
+  lowestEmissions?: number | null;
 }
 
 interface DaypartWeather {
@@ -66,6 +89,36 @@ interface PointOfInterest {
   reviews?: POIReview[];
 }
 
+interface LodgingOption {
+  id?: string;
+  name: string;
+  address?: string;
+  nightly_rate?: number;
+  currency?: string;
+  distance_to_center_km?: number;
+  sustainability_score?: number;
+  booking_url?: string;
+  refundable_until?: string;
+  emissions_kg?: number;
+}
+
+interface HotelCard {
+  name: string;
+  image?: string;
+  address?: string;
+  description?: string;
+  nightlyRate?: number;
+  currency?: string;
+  rating?: number;
+  reviewCount?: number;
+  latitude?: number;
+  longitude?: number;
+  sustainabilityScore?: number;
+  emissionsKg?: number;
+  bookingUrl?: string;
+  source: "lodging" | "poi";
+}
+
 interface DayAttractionBundle {
   day: number;
   morning?: PointOfInterest;
@@ -91,6 +144,7 @@ interface ItineraryResponse {
   day_weather?: DayWeather[];
   attractions?: PointOfInterest[];
   day_attractions?: DayAttractionBundle[];
+  hotels?: LodgingOption[];
   preferences?: string[]; // User's selected preferences
 }
 
@@ -108,6 +162,12 @@ const extractPlaceNames = (text: string): string[] => {
   }
   return Array.from(new Set(placeNames)).filter((n) => n.length > 3);
 };
+
+const normalizePlaceName = (name: string): string =>
+  (name || "").toLowerCase().trim().replace(/\s+/g, " ");
+
+const formatCabinLabel = (value: string) =>
+  value.replace(/\b\w/g, (char) => char.toUpperCase());
 
 // Helper: Generate outfit suggestions
 const generateOutfitSuggestions = (day: ItineraryDay, weather?: DayWeather): string => {
@@ -199,6 +259,8 @@ export default function Results() {
   const [tripName, setTripName] = useState("");
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [flightSort, setFlightSort] = useState<"price" | "emissions">("emissions");
+  const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
@@ -281,17 +343,6 @@ export default function Results() {
   };
 
   // Map preference names to category keywords for filtering (moved outside to avoid hook order issues)
-  const preferenceToCategoryMap: Record<string, string[]> = {
-    food: ["restaurant", "cafe", "food", "dining", "bakery", "bar"],
-    art: ["art", "gallery", "museum", "exhibition", "cultural"],
-    outdoors: ["park", "hiking", "outdoor", "nature", "trail", "beach"],
-    history: ["museum", "historic", "monument", "heritage", "landmark"],
-    nightlife: ["bar", "club", "nightlife", "entertainment"],
-    wellness: ["spa", "wellness", "yoga", "fitness", "health"],
-    shopping: ["shopping", "market", "mall", "boutique", "store"],
-    adventure: ["adventure", "sports", "activity", "outdoor"],
-  };
-
   // Get attractions for current day only (max 3)
   const currentDayAttractions = useMemo(() => {
     if (!itinerary?.day_attractions) return [];
@@ -329,253 +380,110 @@ export default function Results() {
     return attractions.slice(0, 3); // Max 3 markers
   }, [itinerary, currentDayIndex]);
 
-  // Get non-selected preference categories for "Explore More Options"
-  const exploreMoreOptions = useMemo(() => {
-    if (!itinerary || !itinerary.attractions || itinerary.attractions.length === 0) return [];
-    
-    const selectedPrefs = (itinerary.preferences || []).map((p) => p.toLowerCase());
-    const allPrefs = Object.keys(preferenceToCategoryMap);
-    const nonSelectedPrefs = allPrefs.filter((p) => !selectedPrefs.includes(p.toLowerCase()));
+  const hotelOptions = useMemo<HotelCard[]>(() => {
+    if (!itinerary) return [];
 
-    // Helper to normalize name for comparison (remove extra spaces, lowercase, trim)
-    const normalizeName = (name: string): string => {
-      return (name || "").toLowerCase().trim().replace(/\s+/g, " ");
+    const attractionList = itinerary.attractions ?? [];
+
+    const findPoiForHotel = (name: string): PointOfInterest | undefined => {
+      if (!name) return;
+      const normalized = normalizePlaceName(name);
+      if (!normalized) return;
+
+      let best: PointOfInterest | undefined;
+      let bestScore = 0;
+
+      for (const poi of attractionList) {
+        if (!poi.name) continue;
+        const poiNormalized = normalizePlaceName(poi.name);
+        if (!poiNormalized) continue;
+
+        if (poiNormalized === normalized) {
+          return poi;
+        }
+
+        if (normalized.includes(poiNormalized) || poiNormalized.includes(normalized)) {
+          const score =
+            Math.min(normalized.length, poiNormalized.length) /
+            Math.max(normalized.length, poiNormalized.length);
+          if (score > bestScore) {
+            bestScore = score;
+            best = poi;
+          }
+        }
+      }
+
+      return best;
     };
 
-    // STEP 1: Collect ALL place names already in the day-to-day itinerary
-    const placesInItinerary = new Set<string>();
-    
-    // From day_attractions (structured POI data)
-    if (itinerary.day_attractions) {
-      itinerary.day_attractions.forEach((bundle) => {
-        if (bundle.morning?.name) placesInItinerary.add(normalizeName(bundle.morning.name));
-        if (bundle.afternoon?.name) placesInItinerary.add(normalizeName(bundle.afternoon.name));
-        if (bundle.evening?.name) placesInItinerary.add(normalizeName(bundle.evening.name));
-      });
-    }
-    
-    // From days text (extract place names from morning/afternoon/evening text)
-    if (itinerary.days) {
-      itinerary.days.forEach((day) => {
-        if (day.morning) {
-          const names = extractPlaceNames(day.morning);
-          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
-        }
-        if (day.afternoon) {
-          const names = extractPlaceNames(day.afternoon);
-          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
-        }
-        if (day.evening) {
-          const names = extractPlaceNames(day.evening);
-          names.forEach((name) => placesInItinerary.add(normalizeName(name)));
-        }
-      });
-    }
+    const cards: HotelCard[] = [];
+    const seen = new Set<string>();
 
-    // STEP 2: Get all attractions and filter out:
-    // - Attractions that match selected preferences
-    // - Attractions already in the day-to-day itinerary
-    const allAttractions = itinerary.attractions || [];
-    
-    const filteredAttractions = allAttractions.filter((attraction) => {
-      const normalizedAttName = normalizeName(attraction.name);
-      
-      // Exclude if already in itinerary
-      if (placesInItinerary.has(normalizedAttName)) {
-        return false;
-      }
-      
-      // Exclude if matches selected preferences
-      const category = (attraction.category || "").toLowerCase();
-      const name = (attraction.name || "").toLowerCase();
-      const description = (attraction.description || "").toLowerCase();
-      const searchText = `${category} ${name} ${description}`;
+    const pushCard = (card: HotelCard) => {
+      const key = normalizePlaceName(card.name);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      cards.push(card);
+    };
 
-      const matchesSelected = selectedPrefs.some((pref) => {
-        const keywords = preferenceToCategoryMap[pref] || [];
-        return keywords.some((keyword) => searchText.includes(keyword));
+    (itinerary.hotels ?? []).forEach((hotel) => {
+      if (!hotel.name) return;
+      const poi = findPoiForHotel(hotel.name);
+      pushCard({
+        name: hotel.name,
+        image: poi?.photo_urls?.[0],
+        address: hotel.address ?? poi?.description,
+        description: poi?.description,
+        nightlyRate: hotel.nightly_rate,
+        currency: hotel.currency ?? "USD",
+        rating: poi?.rating,
+        reviewCount:
+          poi?.user_ratings_total ?? (poi?.reviews ? poi.reviews.length : undefined),
+        latitude: poi?.latitude,
+        longitude: poi?.longitude,
+        sustainabilityScore: hotel.sustainability_score ?? undefined,
+        emissionsKg: hotel.emissions_kg ?? undefined,
+        bookingUrl: hotel.booking_url ?? undefined,
+        source: "lodging",
       });
-
-      return !matchesSelected;
     });
 
-    // STEP 3: STRICT deduplication
-    const uniqueAttractions = new Map<string, PointOfInterest>();
-    const seenNames = new Set<string>();
-    
-    filteredAttractions.forEach((att) => {
-      const normalizedName = normalizeName(att.name);
-      // Double-check: not in itinerary and not already seen
-      if (!placesInItinerary.has(normalizedName) && !seenNames.has(normalizedName)) {
-        seenNames.add(normalizedName);
-        uniqueAttractions.set(normalizedName, att);
-      }
-    });
+    if (cards.length < 6) {
+      const keywords = ["hotel", "lodging", "hostel", "resort", "stay", "guesthouse", "bnb"];
+      const isHotelLike = (poi: PointOfInterest) => {
+        const haystack = `${poi.category ?? ""} ${poi.description ?? ""}`.toLowerCase();
+        return keywords.some((keyword) => haystack.includes(keyword));
+      };
 
-    let result = Array.from(uniqueAttractions.values());
-
-    // STEP 4: If we don't have enough, try to get from non-selected preference categories
-    if (result.length < 6 && nonSelectedPrefs.length > 0) {
-      const nonSelectedAttractions = allAttractions.filter((attraction) => {
-        const normalizedAttName = normalizeName(attraction.name);
-        
-        // Exclude if already in itinerary or already seen
-        if (placesInItinerary.has(normalizedAttName) || seenNames.has(normalizedAttName)) {
-          return false;
-        }
-        
-        const category = (attraction.category || "").toLowerCase();
-        const name = (attraction.name || "").toLowerCase();
-        const description = (attraction.description || "").toLowerCase();
-        const searchText = `${category} ${name} ${description}`;
-
-        const matchesNonSelected = nonSelectedPrefs.some((pref) => {
-          const keywords = preferenceToCategoryMap[pref] || [];
-          return keywords.some((keyword) => searchText.includes(keyword));
+      attractionList.forEach((poi) => {
+        if (!poi.name || !isHotelLike(poi)) return;
+        pushCard({
+          name: poi.name,
+          image: poi.photo_urls?.[0],
+          address: poi.description,
+          description: poi.description,
+          nightlyRate: undefined,
+          currency: undefined,
+          rating: poi.rating,
+          reviewCount:
+            poi.user_ratings_total ?? (poi.reviews ? poi.reviews.length : undefined),
+          latitude: poi.latitude,
+          longitude: poi.longitude,
+          sustainabilityScore: undefined,
+          emissionsKg: undefined,
+          bookingUrl: undefined,
+          source: "poi",
         });
-
-        return matchesNonSelected;
-      });
-
-      // Add non-selected attractions, STRICTLY avoiding duplicates and itinerary places
-      nonSelectedAttractions.forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!placesInItinerary.has(normalizedName) && !seenNames.has(normalizedName)) {
-          seenNames.add(normalizedName);
-          uniqueAttractions.set(normalizedName, att);
-        }
-      });
-
-      result = Array.from(uniqueAttractions.values());
-    }
-
-    // STEP 5: Ensure variety: try to get attractions from different categories
-    const categorized: Record<string, PointOfInterest[]> = {};
-    result.forEach((att) => {
-      const category = (att.category || "other").toLowerCase();
-      if (!categorized[category]) {
-        categorized[category] = [];
-      }
-      categorized[category].push(att);
-    });
-
-    // STEP 6: Prioritize variety: take max 2 from each category
-    const varied: PointOfInterest[] = [];
-    const seenInVaried = new Set<string>();
-    const categoryKeys = Object.keys(categorized);
-    let categoryIndex = 0;
-    
-    while (varied.length < 6 && categoryKeys.length > 0) {
-      const category = categoryKeys[categoryIndex % categoryKeys.length];
-      if (categorized[category] && categorized[category].length > 0) {
-        const taken = varied.filter((a) => (a.category || "").toLowerCase() === category).length;
-        if (taken < 2) {
-          const nextAtt = categorized[category].shift()!;
-          const normalizedName = normalizeName(nextAtt.name);
-          // Triple-check: not in itinerary, not already in varied
-          if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
-            seenInVaried.add(normalizedName);
-            varied.push(nextAtt);
-          }
-        } else {
-          delete categorized[category];
-          categoryKeys.splice(categoryKeys.indexOf(category), 1);
-          if (categoryKeys.length === 0) break;
-        }
-      }
-      categoryIndex++;
-      if (categoryIndex > 100) break; // Safety break
-    }
-
-    // STEP 7: Fill remaining slots if needed - STRICTLY check for duplicates and itinerary places
-    if (varied.length < 6) {
-      const remaining = result.filter((att) => {
-        const normalizedName = normalizeName(att.name);
-        return !placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName);
-      });
-      remaining.slice(0, 6 - varied.length).forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
-          seenInVaried.add(normalizedName);
-          varied.push(att);
-        }
       });
     }
 
-    // STEP 8: FALLBACK - If we still don't have enough (at least 3), be less strict
-    // Allow selected preferences, but still exclude itinerary places and duplicates
-    if (varied.length < 3) {
-      const fallbackAttractions = allAttractions.filter((attraction) => {
-        const normalizedAttName = normalizeName(attraction.name);
-        // Only exclude if in itinerary or already seen
-        return !placesInItinerary.has(normalizedAttName) && !seenInVaried.has(normalizedAttName);
-      });
+    return cards.slice(0, 6);
+  }, [itinerary]);
 
-      // Deduplicate fallback
-      const fallbackUnique = new Map<string, PointOfInterest>();
-      fallbackAttractions.forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!fallbackUnique.has(normalizedName)) {
-          fallbackUnique.set(normalizedName, att);
-        }
-      });
-
-      const fallbackList = Array.from(fallbackUnique.values());
-      
-      // Add up to 6 total (fill remaining slots)
-      fallbackList.slice(0, 6 - varied.length).forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!placesInItinerary.has(normalizedName) && !seenInVaried.has(normalizedName)) {
-          seenInVaried.add(normalizedName);
-          varied.push(att);
-        }
-      });
-    }
-
-    // STEP 9: Final fallback - if still less than 3, just get any unique attractions not in itinerary
-    if (varied.length < 3) {
-      const finalFallback = allAttractions.filter((attraction) => {
-        const normalizedAttName = normalizeName(attraction.name);
-        return !placesInItinerary.has(normalizedAttName);
-      });
-
-      const finalUnique = new Map<string, PointOfInterest>();
-      finalFallback.forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!finalUnique.has(normalizedName) && !seenInVaried.has(normalizedName)) {
-          finalUnique.set(normalizedName, att);
-        }
-      });
-
-      const finalList = Array.from(finalUnique.values());
-      finalList.slice(0, Math.max(3, 6 - varied.length)).forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!seenInVaried.has(normalizedName)) {
-          seenInVaried.add(normalizedName);
-          varied.push(att);
-        }
-      });
-    }
-
-    // Ensure we return at least what we have (up to 6), but try to get at least 3
-    // If we have less than 3, return what we have (could be 0-2)
-    // If we have 3 or more, return up to 6
-    if (varied.length === 0 && allAttractions.length > 0) {
-      // Last resort: return first 3-6 unique attractions (excluding itinerary only)
-      const lastResort = allAttractions
-        .filter((att) => !placesInItinerary.has(normalizeName(att.name)))
-        .slice(0, 6);
-      const lastResortUnique = new Map<string, PointOfInterest>();
-      lastResort.forEach((att) => {
-        const normalizedName = normalizeName(att.name);
-        if (!lastResortUnique.has(normalizedName)) {
-          lastResortUnique.set(normalizedName, att);
-        }
-      });
-      return Array.from(lastResortUnique.values()).slice(0, 6);
-    }
-    
-    return varied.slice(0, Math.min(6, varied.length));
+  // Get non-selected preference categories for "Explore More Options"
+  const exploreMoreOptions = useMemo(() => {
+    if (!itinerary || !itinerary.attractions) return [];
+    return itinerary.attractions.slice(0, 6);
   }, [itinerary]);
 
   // GSAP Animations
@@ -654,6 +562,86 @@ export default function Results() {
     };
   }, [itinerary]);
 
+  const formatDateTime = (value?: string) => {
+    if (!value) return "Schedule pending";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  };
+
+  // Get unique flights
+  const groupedFlights = useMemo<FlightGroup[]>(() => {
+    if (!itinerary?.flights) return [];
+
+    const groups = new Map<string, FlightGroup>();
+
+    itinerary.flights.forEach((flight) => {
+      const key = [
+        flight.carrier,
+        flight.origin,
+        flight.destination,
+        flight.departure,
+        flight.arrival,
+      ]
+        .map((part) => (typeof part === "string" ? part : String(part)))
+        .join("|");
+
+      const cabinName = flight.cabin ? flight.cabin.toLowerCase() : "economy";
+      const cabinOption: FlightCabinOption = {
+        id: `${flight.id}-${cabinName}`,
+        cabin: cabinName,
+        price: flight.price,
+        currency: flight.currency || "USD",
+        emissionsKg: flight.emissions_kg ?? null,
+        ecoScore: flight.eco_score ?? null,
+      };
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          groupId: key,
+          carrier: flight.carrier,
+          origin: flight.origin,
+          destination: flight.destination,
+          departure: flight.departure,
+          arrival: flight.arrival,
+          cabins: [cabinOption],
+          lowestPrice: flight.price,
+          lowestEmissions: flight.emissions_kg ?? null,
+        });
+      } else {
+        const group = groups.get(key)!;
+        group.cabins.push(cabinOption);
+        group.lowestPrice = Math.min(group.lowestPrice, flight.price);
+        if (flight.emissions_kg !== undefined && flight.emissions_kg !== null) {
+          if (
+            group.lowestEmissions === undefined ||
+            group.lowestEmissions === null ||
+            flight.emissions_kg < group.lowestEmissions
+          ) {
+            group.lowestEmissions = flight.emissions_kg;
+          }
+        }
+      }
+    });
+
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      cabins: group.cabins.sort((a, b) => a.price - b.price),
+    }));
+  }, [itinerary?.flights]);
+
+  const sortedFlightGroups = useMemo(() => {
+    const clone = [...groupedFlights];
+    clone.sort((a, b) => {
+      if (flightSort === "price") {
+        return a.lowestPrice - b.lowestPrice;
+      }
+      const aEmissions = a.lowestEmissions ?? Infinity;
+      const bEmissions = b.lowestEmissions ?? Infinity;
+      return aEmissions - bEmissions;
+    });
+    return clone;
+  }, [groupedFlights, flightSort]);
+
   if (!itinerary) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-emerald-50 text-emerald-900">
@@ -683,36 +671,6 @@ export default function Results() {
     }
   };
 
-  const formatDateTime = (value?: string) => {
-    if (!value) return "Schedule pending";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-  };
-
-  // Get unique flights
-  const flightKey = (f: FlightOption) =>
-    `${f.carrier}|${f.origin}|${f.destination}|${f.departure}|${f.arrival}|${Math.round((f.price || 0) * 100)}`;
-
-  const getUniqueByKey = (flights: FlightOption[]) => {
-    const seen = new Set<string>();
-    const out: FlightOption[] = [];
-    for (const f of flights) {
-      const k = flightKey(f);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(f);
-    }
-    return out;
-  };
-
-  const ecoFlights = itinerary.flights
-    ? getUniqueByKey([...itinerary.flights].sort((a, b) => (a.emissions_kg ?? Infinity) - (b.emissions_kg ?? Infinity)))
-    : [];
-
-  const priceFlights = itinerary.flights
-    ? getUniqueByKey([...itinerary.flights].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)))
-    : [];
-
   const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
   const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
 
@@ -722,8 +680,8 @@ export default function Results() {
       <header className="border-b border-emerald-100/50 bg-white/60 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-6 py-4 md:px-12">
           <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.push("/")}
+          <button
+            onClick={() => router.push("/")}
               className="text-2xl font-bold text-[#0b3d2e] transition hover:text-[#2d6a4f]"
             >
               GreenTrip
@@ -740,7 +698,7 @@ export default function Results() {
                   } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
-                </button>
+          </button>
               )}
             </div>
           </div>
@@ -781,113 +739,230 @@ export default function Results() {
 
         {/* Flight Options */}
         <section className="flight-section mb-20">
-          <h2 className="mb-6 text-2xl font-bold text-[#0b3d2e]">Flight Options</h2>
-          
-          {/* Eco-Optimized */}
-          <div className="mb-8">
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Eco-Optimized</h3>
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-              {ecoFlights.length > 0 ? (
-                ecoFlights.map((flight, idx) => (
-                  <div
-                    key={flight.id || `eco-${idx}`}
-                    className="flight-card flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-[#0b3d2e]">
-                        {flight.origin} → {flight.destination}
-                      </span>
-                      <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-700">
-                        Eco
-                      </span>
-                    </div>
-                    <p className="text-xs text-emerald-600/80 mb-3">{formatDateTime(flight.departure)}</p>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-emerald-700">{flight.carrier}</span>
-                      <span className="font-bold text-[#0b3d2e]">{formatPrice(flight.price, flight.currency)}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-emerald-600/80">
-                      CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
-                  Flight details coming soon
-                </div>
-              )}
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-2xl font-bold text-[#0b3d2e]">Flight Options</h2>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex flex-col text-emerald-700">
+                <span className="mb-1 text-xs uppercase tracking-[0.2em] text-emerald-500">Sort by</span>
+                <select
+                  value={flightSort}
+                  onChange={(e) => setFlightSort(e.target.value as "price" | "emissions")}
+                  className="rounded-full border border-emerald-200 bg-white/70 px-4 py-2 text-sm text-[#0b3d2e] shadow-sm focus:border-emerald-400 focus:outline-none"
+                >
+                  <option value="price">Lowest price</option>
+                  <option value="emissions">Lowest emissions</option>
+                </select>
+              </label>
             </div>
           </div>
 
-          {/* Price-Optimized */}
-          <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Price-Optimized</h3>
-            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-              {priceFlights.length > 0 ? (
-                priceFlights.map((flight, idx) => (
-                  <div
-                    key={flight.id || `price-${idx}`}
-                    className="flight-card flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm hover:shadow-lg hover:scale-[1.02] transition-all"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-[#0b3d2e]">
-                        {flight.origin} → {flight.destination}
-                      </span>
-                      <span className="rounded-full bg-gray-200/50 px-3 py-1 text-xs font-medium text-gray-700">
-                        Price
-                      </span>
-                    </div>
-                    <p className="text-xs text-emerald-600/80 mb-3">{formatDateTime(flight.departure)}</p>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-emerald-700">{flight.carrier}</span>
-                      <span className="font-bold text-[#0b3d2e]">{formatPrice(flight.price, flight.currency)}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-emerald-600/80">
-                      CO₂: {flight.emissions_kg?.toFixed(1) ?? "N/A"} kg
-                    </p>
+  <div className="space-y-4">
+    {sortedFlightGroups.length > 0 ? (
+      sortedFlightGroups.map((flight) => {
+        const isExpanded = expandedFlightId === flight.groupId;
+        const durationText = (() => {
+          const depart = new Date(flight.departure);
+          const arrive = new Date(flight.arrival);
+          const diffMs = arrive.getTime() - depart.getTime();
+          if (Number.isNaN(diffMs) || diffMs <= 0) return "Duration unavailable";
+          const diffMinutes = Math.round(diffMs / 60000);
+          const hours = Math.floor(diffMinutes / 60);
+          const minutes = diffMinutes % 60;
+          return `${hours}h ${minutes}m`;
+        })();
+
+        const maxEmission =
+          flight.cabins.reduce((max, cabin) => {
+            if (cabin.emissionsKg === undefined || cabin.emissionsKg === null) return max;
+            return Math.max(max, cabin.emissionsKg);
+          }, 0) || 0;
+
+        return (
+          <div
+            key={flight.groupId}
+            className="flight-card rounded-2xl border border-white/10 bg-white/60 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-lg"
+          >
+            <button
+              onClick={() => setExpandedFlightId(isExpanded ? null : flight.groupId)}
+              className="w-full text-left"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-3 text-sm text-emerald-700">
+                    <span className="font-semibold text-[#0b3d2e] text-lg">
+                      {flight.origin} → {flight.destination}
+                    </span>
+                    <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-xs">
+                      {flight.cabins.length} cabin{flight.cabins.length > 1 ? "s" : ""}
+                    </span>
                   </div>
-                ))
-              ) : (
-                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
-                  Flight details coming soon
+                  <p className="mt-1 text-xs text-emerald-600/80">
+                    {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)} · {durationText}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-600/80">
+                    Operated by {flight.carrier}
+                  </p>
                 </div>
-              )}
-            </div>
+                <div className="text-right">
+                  <p className="text-sm uppercase tracking-[0.2em] text-emerald-500">From</p>
+                  <p className="text-xl font-semibold text-[#0b3d2e]">
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: flight.cabins[0]?.currency ?? "USD",
+                    }).format(flight.lowestPrice)}
+                  </p>
+                  {flight.lowestEmissions !== undefined && flight.lowestEmissions !== null && (
+                    <p className="text-xs text-emerald-600/80">
+                      {flight.lowestEmissions.toFixed(1)} kg CO₂ (best cabin)
+                    </p>
+                  )}
+                </div>
+              </div>
+            </button>
+
+            {isExpanded && (
+              <div className="mt-5 rounded-2xl border border-emerald-100 bg-white/80 p-4">
+                <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                  Choose your cabin
+                </h4>
+                <div className="space-y-3">
+                  {flight.cabins.map((cabin) => {
+                    const carbonCredits =
+                      cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
+                        ? Math.max(0, maxEmission - cabin.emissionsKg)
+                        : null;
+                    return (
+                      <div
+                        key={cabin.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-white/90 px-4 py-3 text-sm text-emerald-800 shadow-sm"
+                      >
+                        <div>
+                          <p className="font-semibold text-[#0b3d2e]">{formatCabinLabel(cabin.cabin)}</p>
+                          <p className="text-xs text-emerald-600/80">
+                            {cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
+                              ? `${cabin.emissionsKg.toFixed(1)} kg CO₂`
+                              : "Emission estimate unavailable"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-[#0b3d2e]">
+                            {new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: cabin.currency ?? "USD",
+                            }).format(cabin.price)}
+                          </p>
+                          {carbonCredits !== null && (
+                            <p className="text-xs text-emerald-600/80">Carbon credits: {carbonCredits.toFixed(1)}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
+        );
+      })
+    ) : (
+      <div className="rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
+        Flight details coming soon
+      </div>
+    )}
+  </div>
         </section>
 
         {/* Accommodations */}
         <section className="accommodation-section mb-20">
           <h2 className="mb-6 text-2xl font-bold text-[#0b3d2e]">Where You'll Stay</h2>
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {itinerary.attractions && itinerary.attractions.length > 0 ? (
-              itinerary.attractions
-                .filter((a) => a.category?.toLowerCase().includes("lodging") || a.category?.toLowerCase().includes("hotel"))
-                .slice(0, 5)
-                .map((attraction, idx) => (
-                  <div
-                    key={idx}
-                    className="accommodation-card flex-shrink-0 w-72 bg-white/60 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/10 shadow-sm hover:shadow-xl hover:scale-[1.03] transition-all"
-                  >
-                    {attraction.photo_urls && attraction.photo_urls[0] && (
-                      <img
-                        src={attraction.photo_urls[0]}
-                        alt={attraction.name}
-                        className="w-full h-40 object-cover"
-                      />
-                    )}
-                    <div className="p-4">
-                      <h3 className="font-semibold text-[#0b3d2e] mb-1">{attraction.name}</h3>
-                      {attraction.rating && (
-                        <p className="text-sm text-emerald-600/80 mb-2">⭐ {attraction.rating.toFixed(1)}</p>
+            {hotelOptions.length > 0 ? (
+              hotelOptions.map((hotel, idx) => (
+                <div
+                  key={`${hotel.name}-${idx}`}
+                  className="accommodation-card flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/10 shadow-sm transition-all hover:scale-[1.03] hover:shadow-xl"
+                >
+                  {hotel.image ? (
+                    <img
+                      src={hotel.image}
+                      alt={`${hotel.name} exterior`}
+                      className="h-44 w-full object-cover"
+                      loading={idx < 2 ? "eager" : "lazy"}
+                    />
+                  ) : (
+                    <div className="flex h-44 w-full items-center justify-center bg-emerald-50/40 text-xs text-emerald-600/80">
+                      Imagery available soon
+                    </div>
+                  )}
+                  <div className="p-5 space-y-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#0b3d2e]">{hotel.name}</h3>
+                      {hotel.rating !== undefined && (
+                        <p className="text-sm text-emerald-600/80">
+                          ⭐ {hotel.rating.toFixed(1)}
+                          {hotel.reviewCount !== undefined && (
+                            <span className="ml-2 text-xs text-emerald-500/80">
+                              ({hotel.reviewCount.toLocaleString()} reviews)
+                            </span>
+                          )}
+                        </p>
                       )}
-                      <p className="text-xs text-emerald-600/70">{attraction.description || "Accommodation details"}</p>
+                    </div>
+                    {hotel.address && (
+                      <p className="text-sm text-emerald-700/80">{hotel.address}</p>
+                    )}
+                    {hotel.description && (
+                      <p className="text-sm text-emerald-800/80 leading-relaxed line-clamp-4">
+                        {hotel.description}
+                      </p>
+                    )}
+                    <div className="space-y-2 text-sm text-emerald-700/80">
+                      {hotel.nightlyRate !== undefined && (
+                        <p>
+                          Nightly rate:{" "}
+                          <span className="font-semibold text-[#0b3d2e]">
+                            {new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: hotel.currency ?? "USD",
+                            }).format(hotel.nightlyRate)}
+                          </span>
+                        </p>
+                      )}
+                      {hotel.sustainabilityScore !== undefined && (
+                        <p>Sustainability score: {(hotel.sustainabilityScore * 100).toFixed(0)}%</p>
+                      )}
+                      {hotel.emissionsKg !== undefined && (
+                        <p>Estimated emissions: {hotel.emissionsKg.toFixed(1)} kg / night</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {hotel.latitude !== undefined && hotel.longitude !== undefined && (
+                        <Link
+                          href={`https://www.google.com/maps?q=${hotel.latitude},${hotel.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-full border border-emerald-200 px-3 py-1 text-emerald-700 transition hover:border-emerald-300"
+                        >
+                          Open in Maps
+                        </Link>
+                      )}
+                      {hotel.bookingUrl && (
+                        <Link
+                          href={hotel.bookingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-full border border-emerald-200 px-3 py-1 text-emerald-700 transition hover:border-emerald-300"
+                        >
+                          View offer
+                        </Link>
+                      )}
                     </div>
                   </div>
-                ))
+                </div>
+              ))
             ) : (
-              <div className="w-72 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
-                Accommodation details coming soon
+              <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                Hotel recommendations will appear here once available.
               </div>
             )}
           </div>
@@ -971,7 +1046,7 @@ export default function Results() {
                   {poi?.rating && (
                     <p className="text-sm text-emerald-600/80">⭐ {poi.rating.toFixed(1)} / 5.0</p>
                   )}
-                </div>
+        </div>
               );
             })}
           </div>
@@ -994,7 +1069,7 @@ export default function Results() {
               <p className="text-sm text-emerald-800/80 leading-relaxed">
                 {generateOutfitSuggestions(currentDay, currentWeather)}
               </p>
-            </div>
+          </div>
           </div>
         </section>
 
@@ -1005,10 +1080,8 @@ export default function Results() {
             {/* Scroll Buttons */}
             <button
               onClick={(e) => {
-                const container = e.currentTarget.parentElement?.querySelector('.scroll-container');
-                if (container) {
-                  container.scrollBy({ left: -320, behavior: 'smooth' });
-                }
+                const container = e.currentTarget.parentElement?.querySelector<HTMLDivElement>(".scroll-container");
+                container?.scrollBy({ left: -320, behavior: "smooth" });
               }}
               className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 backdrop-blur-sm p-3 shadow-lg transition hover:bg-white hover:shadow-xl"
               aria-label="Scroll left"
@@ -1017,21 +1090,19 @@ export default function Results() {
             </button>
             <button
               onClick={(e) => {
-                const container = e.currentTarget.parentElement?.querySelector('.scroll-container');
-                if (container) {
-                  container.scrollBy({ left: 320, behavior: 'smooth' });
-                }
+                const container = e.currentTarget.parentElement?.querySelector<HTMLDivElement>(".scroll-container");
+                container?.scrollBy({ left: 320, behavior: "smooth" });
               }}
               className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/80 backdrop-blur-sm p-3 shadow-lg transition hover:bg-white hover:shadow-xl"
               aria-label="Scroll right"
             >
               ›
             </button>
-            
-            <div className="scroll-container flex gap-6 overflow-x-auto pb-4 scrollbar-hide scroll-smooth px-12">
-              {exploreMoreOptions && exploreMoreOptions.length > 0 ? (
+
+            <div className="scroll-container flex gap-6 overflow-x-auto scroll-smooth px-12 pb-4 scrollbar-hide">
+              {exploreMoreOptions.length > 0 ? (
                 exploreMoreOptions.map((attraction, idx) => {
-                  const reviewCount = attraction.reviews?.length || 0;
+                  const reviewCount = attraction.reviews?.length ?? 0;
                   const averageRating =
                     attraction.rating ??
                     (reviewCount
@@ -1041,7 +1112,7 @@ export default function Results() {
                   return (
                     <div
                       key={idx}
-                      className="scroll-fade flex-shrink-0 w-80 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm"
+                      className="scroll-fade flex-shrink-0 w-80 rounded-2xl border border-white/10 bg-white/60 p-6 shadow-sm backdrop-blur-xl"
                     >
                       <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
                         {attraction.name}
@@ -1055,19 +1126,19 @@ export default function Results() {
                       ) : (
                         <div className="mb-4 flex h-48 w-full items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 text-xs text-emerald-600/80">
                           Photo preview available
-                        </div>
+          </div>
                       )}
-                      {averageRating && (
+                      {averageRating !== undefined && (
                         <div className="mb-3 flex items-center justify-between text-sm">
                           <span className="font-medium text-emerald-700">
-                            {attraction.name} {averageRating ? `• ${averageRating.toFixed(1)}★` : ""}
+                            {attraction.name} • {averageRating.toFixed(1)}★
                           </span>
                           {attraction.user_ratings_total !== undefined && (
                             <span className="text-xs text-emerald-600/80">
                               {attraction.user_ratings_total.toLocaleString()} reviews
                             </span>
                           )}
-                        </div>
+          </div>
                       )}
                       {attraction.description && (
                         <p className="mb-3 text-xs text-emerald-800/80 leading-relaxed">{attraction.description}</p>
@@ -1091,22 +1162,21 @@ export default function Results() {
                                   {review.relative_time_description}
                                 </p>
                               )}
-                            </div>
+                  </div>
                           ))}
-                        </div>
+                  </div>
                       )}
-                    </div>
+                  </div>
                   );
                 })
               ) : (
-                <div className="w-80 flex-shrink-0 bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 text-sm text-emerald-600/80">
+                <div className="w-80 flex-shrink-0 rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
                   More options coming soon
                 </div>
               )}
-            </div>
+              </div>
           </div>
         </section>
-
       </main>
 
       {/* Chat Sidebar */}
@@ -1129,69 +1199,9 @@ export default function Results() {
             ? "bg-emerald-500 text-white"
             : "bg-gradient-to-r from-emerald-500 to-emerald-400 text-white hover:from-emerald-600 hover:to-emerald-500"
         }`}
-        title={showChat ? "Close chat" : "Open chat planner"}
       >
-        {showChat ? "✕" : "💬"}
+        <span className="text-2xl">{showChat ? "×" : "💬"}</span>
       </button>
-
-      {/* Save Modal */}
-      {showSaveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
-            <button
-              onClick={() => setShowSaveModal(false)}
-              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
-            >
-              ✕
-            </button>
-            <h2 className="mb-4 text-2xl font-bold text-emerald-900">
-              {user ? "Save Trip" : "Sign In to Save Trip"}
-            </h2>
-            {!user ? (
-              <div className="space-y-4">
-                <p className="text-sm text-emerald-700">Please sign in to save your trips.</p>
-                <button
-                  onClick={() => {
-                    setShowSaveModal(false);
-                    router.push("/");
-                  }}
-                  className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
-                >
-                  Go to Sign In
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-emerald-900">Trip Name</label>
-                  <input
-                    type="text"
-                    value={tripName}
-                    onChange={(e) => setTripName(e.target.value)}
-                    placeholder="e.g. Paris Summer 2025"
-                    className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowSaveModal(false)}
-                    className="flex-1 rounded-lg border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveTrip}
-                    disabled={saving || !tripName.trim()}
-                    className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {saving ? "Saving..." : "Save Trip"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
-}
+};
