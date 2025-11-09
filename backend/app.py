@@ -11,6 +11,9 @@ from services.chat_planner import chat_planner
 from services.profile_generator import generate_user_profile_summary
 from services.preference_aggregator import promote_frequent_preferences
 from services.supabase_client import get_supabase_client
+from services.imessage_service import get_imessage_service, is_available
+from photon_integration.routes import router as photon_router
+from photon_integration.itinerary_cache import store_itinerary
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register Photon integration router
+app.include_router(photon_router, prefix="/photon", tags=["photon"])
+
 
 @app.get("/plan")
 def read_root():
@@ -33,7 +39,21 @@ def read_root():
 @app.post("/generate_itinerary", response_model=GreenTripItineraryResponse)
 async def generate_itinerary_endpoint(request: ItineraryGenerationRequest):
     """Generate a travel itinerary using Dedalus Labs"""
-    return await generate_itinerary(request)
+    result = await generate_itinerary(request)
+    
+    # Store in cache for Photon AI access
+    # Use a default user_id if none provided, or extract from request if available
+    user_id = getattr(request, 'user_id', None) or 'default'
+    # Convert Pydantic model to dict (works with both v1 and v2)
+    if hasattr(result, 'model_dump'):
+        result_dict = result.model_dump()
+    elif hasattr(result, 'dict'):
+        result_dict = result.dict()
+    else:
+        result_dict = result
+    store_itinerary(user_id, result_dict)
+    
+    return result
 
 
 class ChatPlannerRequest(BaseModel):
@@ -1170,4 +1190,111 @@ async def remove_friend(request: RemoveFriendRequest):
     except Exception as e:
         logger.error(f"Error removing friend: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error removing friend: {str(e)}")
+
+
+# ==================== iMessage Integration Endpoints ====================
+
+class IMessageSendRequest(BaseModel):
+    to: str  # Phone number or email
+    message: str
+
+
+class IMessageTripNotificationRequest(BaseModel):
+    to: str
+    destination: str
+    start_date: str
+    end_date: str
+    budget: float
+    num_days: int
+    trip_id: Optional[str] = None
+
+
+class IMessageItineraryRequest(BaseModel):
+    to: str
+    itinerary: Dict[str, Any]
+
+
+@app.get("/imessage/status")
+async def imessage_status():
+    """Check if iMessage service is available"""
+    return {
+        "available": is_available(),
+        "platform": "macOS only",
+        "note": "iMessage integration requires macOS and access to Messages database"
+    }
+
+
+@app.post("/imessage/send")
+async def send_imessage(request: IMessageSendRequest):
+    """Send a text message via iMessage"""
+    if not is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="iMessage service not available. This feature requires macOS."
+        )
+    
+    try:
+        service = get_imessage_service()
+        result = service.send_text(request.to, request.message)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to send message"))
+        
+        return {"message": "Message sent successfully", "result": result}
+    except Exception as e:
+        logger.error(f"Error sending iMessage: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error sending message: {str(e)}")
+
+
+@app.post("/imessage/send-trip-notification")
+async def send_trip_notification(request: IMessageTripNotificationRequest):
+    """Send a trip notification via iMessage"""
+    if not is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="iMessage service not available. This feature requires macOS."
+        )
+    
+    try:
+        service = get_imessage_service()
+        trip_data = {
+            "destination": request.destination,
+            "startDate": request.start_date,
+            "endDate": request.end_date,
+            "budget": request.budget,
+            "numDays": request.num_days,
+            "tripId": request.trip_id
+        }
+        
+        result = service.send_trip_notification(request.to, trip_data)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to send notification"))
+        
+        return {"message": "Trip notification sent successfully", "result": result}
+    except Exception as e:
+        logger.error(f"Error sending trip notification: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error sending notification: {str(e)}")
+
+
+@app.post("/imessage/send-itinerary")
+async def send_itinerary(request: IMessageItineraryRequest):
+    """Send itinerary details via iMessage"""
+    if not is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="iMessage service not available. This feature requires macOS."
+        )
+    
+    try:
+        service = get_imessage_service()
+        result = service.send_itinerary(request.to, request.itinerary)
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to send itinerary"))
+        
+        return {"message": "Itinerary sent successfully", "result": result}
+    except Exception as e:
+        logger.error(f"Error sending itinerary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error sending itinerary: {str(e)}")
 
