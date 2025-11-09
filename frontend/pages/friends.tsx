@@ -21,9 +21,12 @@ export default function Friends() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        loadFriends();
-        loadPendingRequests();
+        setLoading(false);
+        // Load friends after user is set
+        loadFriends(session.user.id);
+        loadPendingRequests(session.user.id);
       } else {
+        setLoading(false);
         router.push("/");
       }
     });
@@ -31,19 +34,19 @@ export default function Friends() {
     supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        loadFriends();
-        loadPendingRequests();
+        loadFriends(session.user.id);
+        loadPendingRequests(session.user.id);
       } else {
         router.push("/");
       }
     });
   }, [router]);
 
-  const loadFriends = async () => {
-    if (!user) return;
+  const loadFriends = async (userId: string) => {
+    if (!userId) return;
     setLoadingFriends(true);
     try {
-      const response = await fetch(`http://localhost:8000/friends/list?user_id=${user.id}`);
+      const response = await fetch(`http://localhost:8000/friends/list?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
         setFriends(data.friends || []);
@@ -52,14 +55,13 @@ export default function Friends() {
       console.error("Error loading friends:", err);
     } finally {
       setLoadingFriends(false);
-      setLoading(false);
     }
   };
 
-  const loadPendingRequests = async () => {
-    if (!user) return;
+  const loadPendingRequests = async (userId: string) => {
+    if (!userId) return;
     try {
-      const response = await fetch(`http://localhost:8000/friends/pending?user_id=${user.id}`);
+      const response = await fetch(`http://localhost:8000/friends/pending?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
         setPendingRequests(data.pending_requests || []);
@@ -97,7 +99,9 @@ export default function Friends() {
       setFriendUsername("");
       setShowAddFriend(false);
       alert("Friend request sent!");
-      loadPendingRequests();
+      if (user) {
+        loadPendingRequests(user.id);
+      }
     } catch (err: any) {
       console.error("Error adding friend:", err);
       alert(`Failed to add friend: ${err.message}`);
@@ -122,8 +126,10 @@ export default function Friends() {
         throw new Error("Failed to accept friend request");
       }
 
-      loadFriends();
-      loadPendingRequests();
+      if (user) {
+        loadFriends(user.id);
+        loadPendingRequests(user.id);
+      }
     } catch (err) {
       console.error("Error accepting friend request:", err);
       alert("Failed to accept friend request");
@@ -148,8 +154,10 @@ export default function Friends() {
         throw new Error("Failed to remove friend");
       }
 
-      loadFriends();
-      loadPendingRequests();
+      if (user) {
+        loadFriends(user.id);
+        loadPendingRequests(user.id);
+      }
     } catch (err) {
       console.error("Error removing friend:", err);
       alert("Failed to remove friend");
