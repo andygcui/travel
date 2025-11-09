@@ -2,12 +2,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
+import logging
+import os
+import requests
 from schemas import ItineraryGenerationRequest, GreenTripItineraryResponse
 from services.itinerary_generator import generate_itinerary
 from services.chat_planner import chat_planner
 from services.profile_generator import generate_user_profile_summary
 from services.preference_aggregator import promote_frequent_preferences
 from services.supabase_client import get_supabase_client
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -96,9 +101,31 @@ async def get_user_preferences(user_id: str):
 async def get_user_profile(user_id: str):
     """Get generated user profile summary"""
     try:
+        logger.info(f"Profile endpoint called for user: {user_id}")
+        
+        # First check if we can connect to Supabase
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("Supabase client not available - cannot generate profile")
+            raise HTTPException(
+                status_code=503, 
+                detail="Database service unavailable. Please check backend configuration (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables)."
+            )
+        
+        # Check if user has preferences
+        user_prefs_response = supabase.table("user_preferences").select("*").eq(
+            "user_id", user_id
+        ).execute()
+        
+        logger.info(f"User preferences check: {len(user_prefs_response.data or [])} records found")
+        
         summary = await generate_user_profile_summary(user_id)
+        logger.info(f"Profile summary generated: {summary[:100]}...")
         return {"summary": summary}
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error generating profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating profile: {str(e)}")
 
 
@@ -158,4 +185,77 @@ async def promote_preference(request: PromotePreferenceRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error promoting preference: {str(e)}")
+
+
+class DeleteAccountRequest(BaseModel):
+    user_id: str
+
+
+@app.delete("/user/account")
+async def delete_user_account(request: DeleteAccountRequest):
+    """Delete a user account and all associated data"""
+    try:
+        user_id = request.user_id
+        supabase = get_supabase_client()
+        
+        # Delete all user data first (CASCADE will handle this, but we'll do it explicitly)
+        if supabase:
+            # Delete saved trips
+            try:
+                supabase.table("saved_trips").delete().eq("user_id", user_id).execute()
+            except Exception as e:
+                logger.warning(f"Error deleting trips: {e}")
+            
+            # Delete user preferences
+            try:
+                supabase.table("user_preferences").delete().eq("user_id", user_id).execute()
+            except Exception as e:
+                logger.warning(f"Error deleting preferences: {e}")
+            
+            # Delete chat preferences
+            try:
+                supabase.table("chat_preferences").delete().eq("user_id", user_id).execute()
+            except Exception as e:
+                logger.warning(f"Error deleting chat preferences: {e}")
+        else:
+            logger.warning("Supabase client not available, skipping data deletion (will be handled by CASCADE)")
+        
+        # Delete the auth user (requires service role key)
+        # Use Supabase REST API directly since Python client might not have admin methods
+        try:
+            supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+            service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if not supabase_url or not service_role_key:
+                raise HTTPException(status_code=500, detail="Supabase service role key not configured. Please add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to backend/.env")
+            
+            # Delete user via Supabase Admin API
+            delete_url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
+            headers = {
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.delete(delete_url, headers=headers)
+            
+            if response.status_code not in [200, 204]:
+                error_text = response.text
+                logger.error(f"Error deleting auth user: {response.status_code} - {error_text}")
+                raise HTTPException(status_code=500, detail=f"Error deleting auth user: {error_text}")
+            
+            logger.info(f"Successfully deleted auth user: {user_id}")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting auth user: {e}")
+            raise HTTPException(status_code=500, detail=f"Error deleting auth user: {str(e)}")
+        
+        return {"message": "Account deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting account: {str(e)}")
 

@@ -30,6 +30,8 @@ export default function Dashboard() {
   const [loadingPreferences, setLoadingPreferences] = useState(false);
   const [registrationPrefs, setRegistrationPrefs] = useState<any>(null);
   const [loadingRegistrationPrefs, setLoadingRegistrationPrefs] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -60,13 +62,43 @@ export default function Dashboard() {
   const loadProfile = async (userId: string) => {
     setLoadingProfile(true);
     try {
+      console.log("Loading profile for user:", userId);
       const response = await fetch(`http://localhost:8000/user/profile?user_id=${userId}`);
+      console.log("Profile response status:", response.status);
       if (response.ok) {
         const data = await response.json();
-        setProfileSummary(data.summary || "");
+        console.log("Profile data received:", data);
+        const summary = data.summary || "";
+        console.log("Profile summary:", summary);
+        console.log("Summary length:", summary.length);
+        console.log("Summary trimmed:", summary.trim());
+        // Filter out error messages from backend - show friendly message instead
+        if (summary.includes("Unable to load") || summary.includes("Unable to generate")) {
+          // Don't show backend error messages to user
+          console.warn("Backend returned error message, filtering out:", summary);
+          setProfileSummary("");
+        } else if (summary && summary.trim() !== "") {
+          console.log("Setting profile summary:", summary);
+          setProfileSummary(summary);
+        } else {
+          console.warn("Summary is empty or whitespace only");
+          setProfileSummary("");
+        }
+      } else {
+        // If response is not OK, log the error
+        const errorText = await response.text().catch(() => "");
+        console.error("Error loading profile:", response.status, response.statusText, errorText);
+        // Check if it's a 503 (service unavailable) - this means backend config issue
+        if (response.status === 503) {
+          console.error("Backend database service unavailable - check backend configuration");
+        }
+        // Set empty summary if profile can't be loaded
+        setProfileSummary("");
       }
     } catch (err: any) {
-      console.error("Error loading profile:", err);
+      console.error("Error loading profile (network error):", err);
+      // Set empty summary on error
+      setProfileSummary("");
     } finally {
       setLoadingProfile(false);
     }
@@ -78,10 +110,36 @@ export default function Dashboard() {
       const response = await fetch(`http://localhost:8000/user/preferences?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
-        setPreferences(data);
+        // Ensure we always have a valid structure, even if empty
+        setPreferences({
+          long_term: data.long_term || [],
+          frequent_trip_specific: data.frequent_trip_specific || [],
+          temporal: data.temporal || [],
+        });
+      } else {
+        // If response is not OK, log the error
+        console.error("Error loading preferences:", response.status, response.statusText);
+        const errorText = await response.text().catch(() => "");
+        console.error("Error details:", errorText);
+        // Check if it's a 503 (service unavailable) - this means backend config issue
+        if (response.status === 503) {
+          console.error("Backend database service unavailable - check backend configuration");
+        }
+        // Set empty preferences structure
+        setPreferences({
+          long_term: [],
+          frequent_trip_specific: [],
+          temporal: [],
+        });
       }
     } catch (err: any) {
-      console.error("Error loading preferences:", err);
+      console.error("Error loading preferences (network error):", err);
+      // Set empty preferences structure on error
+      setPreferences({
+        long_term: [],
+        frequent_trip_specific: [],
+        temporal: [],
+      });
     } finally {
       setLoadingPreferences(false);
     }
@@ -90,6 +148,7 @@ export default function Dashboard() {
   const loadRegistrationPreferences = async (userId: string) => {
     setLoadingRegistrationPrefs(true);
     try {
+      console.log("Loading registration preferences for user:", userId);
       const { data, error } = await supabase
         .from("user_preferences")
         .select("*")
@@ -99,8 +158,12 @@ export default function Dashboard() {
       if (error && error.code !== "PGRST116") {
         // PGRST116 = not found, which is OK
         console.error("Error loading registration preferences:", error);
+        console.error("Error code:", error.code, "Error message:", error.message);
       } else if (data) {
+        console.log("Registration preferences loaded:", data);
         setRegistrationPrefs(data);
+      } else {
+        console.log("No registration preferences found for user:", userId);
       }
     } catch (err: any) {
       console.error("Error loading registration preferences:", err);
@@ -151,6 +214,106 @@ export default function Dashboard() {
   const handleViewTrip = (trip: SavedTrip) => {
     sessionStorage.setItem("itinerary", JSON.stringify(trip.itinerary_data));
     router.push("/results");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+
+    // Double confirmation
+    const confirmed = confirm(
+      "⚠️ WARNING: This will permanently delete your account and all your data.\n\n" +
+      "This includes:\n" +
+      "• All saved trips\n" +
+      "• All preferences\n" +
+      "• All chat-learned preferences\n" +
+      "• Your account\n\n" +
+      "This action CANNOT be undone.\n\n" +
+      "Are you absolutely sure?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const typed = prompt("Please type 'DELETE' to confirm account deletion:");
+    if (typed !== "DELETE") {
+      alert("Account deletion cancelled. You must type 'DELETE' exactly.");
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      const userId = user.id;
+
+      // Delete all user data (CASCADE should handle this, but we'll do it explicitly for safety)
+      // Delete saved trips
+      const { error: tripsError } = await supabase
+        .from("saved_trips")
+        .delete()
+        .eq("user_id", userId);
+
+      if (tripsError) {
+        console.error("Error deleting trips:", tripsError);
+      }
+
+      // Delete user preferences
+      const { error: prefsError } = await supabase
+        .from("user_preferences")
+        .delete()
+        .eq("user_id", userId);
+
+      if (prefsError) {
+        console.error("Error deleting preferences:", prefsError);
+      }
+
+      // Delete chat preferences (if table exists)
+      try {
+        const { error: chatPrefsError } = await supabase
+          .from("chat_preferences")
+          .delete()
+          .eq("user_id", userId);
+
+        if (chatPrefsError) {
+          console.error("Error deleting chat preferences:", chatPrefsError);
+        }
+      } catch (err) {
+        // Table might not exist, that's OK
+        console.log("Chat preferences table might not exist:", err);
+      }
+
+      // Call backend to delete the auth user (requires service role key)
+      try {
+        const deleteResponse = await fetch("http://localhost:8000/user/account", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId }),
+        });
+
+        if (!deleteResponse.ok) {
+          const errorData = await deleteResponse.json().catch(() => ({ detail: "Unknown error" }));
+          throw new Error(errorData.detail || "Failed to delete account");
+        }
+
+        // Sign out and redirect
+        await supabase.auth.signOut();
+        alert("Your account has been successfully deleted.");
+        router.push("/");
+      } catch (deleteErr: any) {
+        console.error("Error deleting account via backend:", deleteErr);
+        // If backend deletion fails, at least delete the data and sign out
+        await supabase.auth.signOut();
+        alert(
+          `Account data deleted, but there was an error deleting the auth account: ${deleteErr.message}. Please contact support.`
+        );
+        router.push("/");
+      }
+    } catch (err: any) {
+      console.error("Error deleting account:", err);
+      alert(`Failed to delete account: ${err.message}. Please try again or contact support.`);
+    } finally {
+      setDeletingAccount(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const formatDate = (dateString: string | null) => {
@@ -204,6 +367,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-4">
               <span className="text-sm text-emerald-700">{user?.email}</span>
               <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-900"
+                disabled={deletingAccount}
+              >
+                {deletingAccount ? "Deleting..." : "Delete Account"}
+              </button>
+              <button
                 onClick={async () => {
                   await supabase.auth.signOut();
                   router.push("/");
@@ -230,7 +400,7 @@ export default function Dashboard() {
             <h2 className="mb-3 text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
             {loadingProfile ? (
               <p className="text-emerald-700">Loading your profile...</p>
-            ) : profileSummary ? (
+            ) : profileSummary && profileSummary.trim() !== "" && !profileSummary.includes("Unable to") ? (
               <p className="text-emerald-800 leading-relaxed">{profileSummary}</p>
             ) : (
               <p className="text-emerald-700 italic">
@@ -392,7 +562,9 @@ export default function Dashboard() {
                   )}
               </div>
             ) : (
-              <p className="text-emerald-700 italic">Unable to load preferences at this time.</p>
+              <p className="text-emerald-700 italic">
+                No chat-learned preferences yet. Use the chat feature when planning trips to start building your profile!
+              </p>
             )}
           </div>
 
@@ -481,6 +653,59 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-2xl">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+              disabled={deletingAccount}
+            >
+              ✕
+            </button>
+
+            <h2 className="mb-4 text-2xl font-bold text-red-900">Delete Account</h2>
+            <p className="mb-4 text-sm text-gray-700">
+              Are you sure you want to delete your account? This action cannot be undone.
+            </p>
+
+            <div className="mb-6 rounded-lg border border-red-100 bg-red-50 p-4">
+              <p className="mb-2 text-sm font-semibold text-red-900">This will permanently delete:</p>
+              <ul className="ml-4 list-disc text-sm text-red-800">
+                <li>All your saved trips</li>
+                <li>All your preferences</li>
+                <li>All chat-learned preferences</li>
+                <li>Your account data</li>
+              </ul>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-amber-100 bg-amber-50 p-3">
+              <p className="text-xs text-amber-800">
+                <strong>Note:</strong> You will need to type 'DELETE' in the confirmation dialog to proceed.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAccount}
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="flex-1 rounded-lg bg-gradient-to-r from-red-500 to-red-400 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingAccount ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

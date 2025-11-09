@@ -87,7 +87,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
 
   const savePreferences = async (userId: string) => {
     try {
-      const { error } = await supabase
+      console.log('Attempting to save preferences for user:', userId)
+      console.log('Preferences to save:', {
+        preferences: selectedPreferences,
+        likes: selectedLikes,
+        dislikes: selectedDislikes,
+        dietary_restrictions: selectedDietary,
+      })
+      
+      const { data, error } = await supabase
         .from('user_preferences')
         .upsert({
           user_id: userId,
@@ -99,12 +107,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         }, {
           onConflict: 'user_id'
         })
+        .select()
       
       if (error) {
         console.error('Error saving preferences:', error)
+        console.error('Error details:', JSON.stringify(error, null, 2))
         // If RLS blocks it, we'll save it later when user logs in
         return false
       }
+      
+      console.log('Preferences saved successfully:', data)
       return true
     } catch (err: any) {
       console.error('Error saving preferences:', err)
