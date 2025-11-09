@@ -1,8 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import Image, { StaticImageData } from "next/image";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
+
+import elonMuskImg from "../../public/images/elon_musk.jpg";
+import taylorSwiftImg from "../../public/images/taylor_swift.jpg";
+import drakeImg from "../../public/images/drake.jpg";
+import kimKardashianImg from "../../public/images/kim_kardashian.webp";
+import celebrityProfiles from "../data/celebrityProfiles.json";
+
+interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  handle: string;
+  credits: string;
+  emissionsSaved: string;
+  image: StaticImageData;
+}
+
+const leaderboard: LeaderboardEntry[] = [
+  {
+    rank: 1,
+    name: "Elon Musk",
+    handle: "@elonmusk",
+    credits: "2,697.8",
+    emissionsSaved: "11,262.7 kg CO₂",
+    image: elonMuskImg,
+  },
+];
 
 export default function Friends() {
   const router = useRouter();
@@ -95,6 +122,7 @@ export default function Friends() {
             total_credits: -3437000, // -3,437 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: drakeImg,
           },
           {
             user_id: "celebrity_elon",
@@ -103,6 +131,7 @@ export default function Friends() {
             total_credits: -5443000, // -5,443 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: elonMuskImg,
           },
           {
             user_id: "celebrity_kim",
@@ -111,6 +140,7 @@ export default function Friends() {
             total_credits: -4800000, // -4,800 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: kimKardashianImg,
           },
           {
             user_id: "celebrity_taylor",
@@ -119,6 +149,7 @@ export default function Friends() {
             total_credits: -1753000, // -1,753 * 10^3 (assuming 10^3, not 10^-3)
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: taylorSwiftImg,
           },
         ];
         
@@ -322,41 +353,48 @@ export default function Friends() {
 
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100">
         {/* Header */}
-        <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <header className="border-b border-gray-200 bg-white/70 backdrop-blur-lg">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-12">
+            <Link href="/" className="text-2xl font-semibold text-gray-900 transition hover:text-gray-700">
+              GreenTrip
+            </Link>
             <div className="flex items-center gap-3">
-              <Link href="/" className="text-2xl font-bold text-[#34d399]">
-                GreenTrip
-              </Link>
-              <span className="text-sm text-emerald-600">Friends</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link
-                href="/dashboard"
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-              >
-                Dashboard
-              </Link>
-              <span className="text-sm text-emerald-700">
-                {user?.user_metadata?.first_name && user?.user_metadata?.last_name
-                  ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
-                  : user?.user_metadata?.name || user?.email}
-              </span>
-              <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  router.push("/");
-                }}
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900"
-              >
-                Sign Out
-              </button>
+              {user && (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Profile
+                  </Link>
+                  <Link
+                    href="/emissions"
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Emissions Guide
+                  </Link>
+                  <span className="text-sm text-emerald-700">
+                    {user?.user_metadata?.first_name && user?.user_metadata?.last_name
+                      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                      : user?.user_metadata?.name || user?.email}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      router.push("/");
+                    }}
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="mx-auto max-w-6xl px-6 py-12">
+        <main className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-emerald-900">Friends</h1>
             <p className="mt-2 text-emerald-700">Manage your friends and friend requests</p>
@@ -431,6 +469,11 @@ export default function Friends() {
                   
                   // Determine color based on credits (negative = red, positive = green)
                   const creditsColor = entry.total_credits < 0 ? "text-red-600" : "text-emerald-700";
+
+                  const normalizedUsername = (entry.username || "").toLowerCase().replace(/[^a-z0-9_]/gi, "");
+                  const celebrityPhoto = isCelebrity
+                    ? entry.image || (celebrityProfiles as Record<string, string>)[normalizedUsername]
+                    : undefined;
                   
                   return (
                     <div
@@ -447,19 +490,32 @@ export default function Friends() {
                     >
                       {/* Rank Badge */}
                       <div className="flex items-center gap-4">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-full font-bold ${
-                          entry.rank === 1
-                            ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white text-lg shadow-lg"
-                            : entry.rank === 2
-                            ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
-                            : entry.rank === 3
-                            ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
-                            : isCelebrity
-                            ? "bg-gradient-to-br from-purple-400 to-pink-400 text-white"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}>
-                          {medalEmoji || `#${entry.rank}`}
-                        </div>
+                        {isCelebrity && celebrityPhoto ? (
+                          <div className="flex h-12 w-12 items-center justify-center">
+                            <div className="h-12 w-12 overflow-hidden rounded-full ring-2 ring-purple-300">
+                              <Image
+                                src={celebrityPhoto}
+                                alt={`${entry.username} profile`}
+                                width={48}
+                                height={48}
+                                className="h-full w-full object-cover"
+                                unoptimized={typeof celebrityPhoto === "string"}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={`flex h-12 w-12 items-center justify-center rounded-full font-bold ${
+                            entry.rank === 1
+                              ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white text-lg shadow-lg"
+                              : entry.rank === 2
+                              ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
+                              : entry.rank === 3
+                              ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {medalEmoji || `#${entry.rank}`}
+                          </div>
+                        )}
                         
                         <div className="flex-1">
                           <div className="flex items-center gap-2">

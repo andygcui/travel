@@ -1160,62 +1160,63 @@ export default function Dashboard() {
 
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100">
         {/* Header */}
-        <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <header className="border-b border-gray-200 bg-white/70 backdrop-blur-lg">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-12">
+            <Link href="/" className="text-2xl font-semibold text-gray-900 transition hover:text-gray-700">
+              GreenTrip
+            </Link>
             <div className="flex items-center gap-3">
-              <Link href="/" className="text-2xl font-bold text-[#34d399]">
-                GreenTrip
-              </Link>
-              <span className="text-sm text-emerald-600">Dashboard</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link
-                href="/friends"
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-              >
-                👥 Friends
-              </Link>
-              <Link
-                href="/emissions"
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-              >
-                🌍 Emissions Guide
-              </Link>
-              <button
-                onClick={checkAndReloadPreferences}
-                disabled={checkingPreferences}
-                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Check for preference changes and reload profile"
-              >
-                {checkingPreferences ? "🔄 Checking..." : "🔄 Refresh Profile"}
-              </button>
-              <span className="text-sm text-emerald-700">
-                {user?.user_metadata?.first_name && user?.user_metadata?.last_name
-                  ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
-                  : user?.user_metadata?.name || user?.email}
-              </span>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-900"
-                disabled={deletingAccount}
-              >
-                {deletingAccount ? "Deleting..." : "Delete Account"}
-              </button>
-              <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  router.push("/");
-                }}
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:text-emerald-900"
-              >
-                Sign Out
-              </button>
+              {user && (
+                <>
+                  <Link
+                    href="/friends"
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Leaderboard
+                  </Link>
+                  <Link
+                    href="/emissions"
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Emissions Guide
+                  </Link>
+                  <button
+                    onClick={checkAndReloadPreferences}
+                    disabled={checkingPreferences}
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Check for preference changes and reload profile"
+                  >
+                    {checkingPreferences ? "🔄 Checking..." : "🔄 Refresh Profile"}
+                  </button>
+                  <span className="text-sm text-emerald-700">
+                    {user?.user_metadata?.first_name && user?.user_metadata?.last_name
+                      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                      : user?.user_metadata?.name || user?.email}
+                  </span>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={deletingAccount}
+                  >
+                    {deletingAccount ? "Deleting..." : "Delete Account"}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      router.push("/");
+                    }}
+                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="mx-auto max-w-6xl px-6 py-12">
+        <main className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-emerald-900">My Saved Trips</h1>
             <p className="mt-2 text-emerald-700">
