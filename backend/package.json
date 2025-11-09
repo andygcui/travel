@@ -6,6 +6,9 @@
     "start": ".venv/bin/uvicorn app:app --reload"
   },
   "dependencies": {
-    "@react-google-maps/api": "^2.20.7"
+    "@photon-ai/imessage-kit": "^1.1.3",
+    "@photon-ai/rapid": "^1.0.1",
+    "@react-google-maps/api": "^2.20.7",
+    "better-sqlite3": "^12.4.1"
   }
 }

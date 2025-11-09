@@ -218,9 +218,6 @@ async def chat_planner(
                 "updated_itinerary": None,
                 "extracted_preferences": None,
             }
-                start=start_date,
-                end=end_date,
-            )
             
             attractions = await google_places_service.fetch_attractions_google(
                 destination=destination,
