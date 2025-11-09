@@ -1189,7 +1189,11 @@ export default function Dashboard() {
               >
                 {checkingPreferences ? "🔄 Checking..." : "🔄 Refresh Profile"}
               </button>
-              <span className="text-sm text-emerald-700">{user?.email}</span>
+              <span className="text-sm text-emerald-700">
+                {user?.user_metadata?.first_name && user?.user_metadata?.last_name
+                  ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                  : user?.user_metadata?.name || user?.email}
+              </span>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-900"

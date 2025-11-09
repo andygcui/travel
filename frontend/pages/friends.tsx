@@ -289,7 +289,11 @@ export default function Friends() {
               >
                 Dashboard
               </Link>
-              <span className="text-sm text-emerald-700">{user?.email}</span>
+              <span className="text-sm text-emerald-700">
+                {user?.user_metadata?.first_name && user?.user_metadata?.last_name
+                  ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                  : user?.user_metadata?.name || user?.email}
+              </span>
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();

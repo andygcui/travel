@@ -1,5 +1,8 @@
 import Head from "next/head";
 import Link from "next/link";
+import { useEffect } from "react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 interface EmissionCategory {
   name: string;
@@ -13,6 +16,146 @@ interface EmissionCategory {
 }
 
 export default function Emissions() {
+  // Register GSAP plugin
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      gsap.registerPlugin(ScrollTrigger);
+    } catch (error) {
+      console.error("Error registering GSAP plugins:", error);
+      return;
+    }
+
+    // Hero section fade in
+    gsap.from(".hero-section", {
+      opacity: 0,
+      y: 60,
+      duration: 1.2,
+      ease: "power2.out",
+    });
+
+    // Staggered reveal for baseline cards
+    gsap.utils.toArray<HTMLElement>(".baseline-card").forEach((el, i) => {
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        y: 60,
+        scale: 0.9,
+        duration: 1,
+        delay: i * 0.15,
+        ease: "power2.out",
+      });
+    });
+
+    // Category sections fade up
+    gsap.utils.toArray<HTMLElement>(".category-section").forEach((el, i) => {
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        y: 80,
+        duration: 1.2,
+        delay: i * 0.1,
+        ease: "power2.out",
+      });
+    });
+
+    // Staggered item cards within categories
+    gsap.utils.toArray<HTMLElement>(".emission-item").forEach((el, i) => {
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 90%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        y: 40,
+        scale: 0.95,
+        duration: 0.8,
+        delay: (i % 6) * 0.08,
+        ease: "power2.out",
+      });
+    });
+
+    // Fun facts cards - alternate from left/right
+    gsap.utils.toArray<HTMLElement>(".fun-fact-card").forEach((el, i) => {
+      const direction = i % 2 === 0 ? -60 : 60;
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        x: direction,
+        y: 40,
+        duration: 1,
+        delay: (i % 3) * 0.1,
+        ease: "power2.out",
+      });
+    });
+
+    // Benefits section cards
+    gsap.utils.toArray<HTMLElement>(".benefit-card").forEach((el, i) => {
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        y: 60,
+        scale: 0.95,
+        duration: 1,
+        delay: (i % 2) * 0.1,
+        ease: "power2.out",
+      });
+    });
+
+    // Tips section cards
+    gsap.utils.toArray<HTMLElement>(".tip-card").forEach((el, i) => {
+      gsap.from(el, {
+        scrollTrigger: {
+          trigger: el,
+          start: "top 85%",
+          toggleActions: "play none none reverse",
+        },
+        opacity: 0,
+        x: i % 2 === 0 ? -50 : 50,
+        duration: 1,
+        delay: (i % 2) * 0.1,
+        ease: "power2.out",
+      });
+    });
+
+    // CTA section fade in
+    gsap.from(".cta-section", {
+      scrollTrigger: {
+        trigger: ".cta-section",
+        start: "top 85%",
+        toggleActions: "play none none reverse",
+      },
+      opacity: 0,
+      y: 60,
+      scale: 0.95,
+      duration: 1.2,
+      ease: "power2.out",
+    });
+
+    // Cleanup
+    return () => {
+      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+    };
+  }, []);
+
   const emissionCategories: EmissionCategory[] = [
     {
       name: "Transportation",
@@ -167,96 +310,98 @@ export default function Emissions() {
         <meta name="description" content="Learn about carbon emissions from travel and how to reduce your footprint" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-100">
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-50">
         {/* Header */}
-        <header className="border-b border-emerald-100 bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <header className="sticky top-0 z-50 border-b border-emerald-100/50 bg-white/90 backdrop-blur-md shadow-sm">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-3">
-              <Link href="/" className="text-2xl font-bold text-[#34d399]">
+              <Link href="/" className="text-2xl font-bold text-[#34d399] transition hover:text-[#3cb371]">
                 GreenTrip
               </Link>
-              <span className="text-sm text-emerald-600">Carbon Emissions Guide</span>
+              <span className="text-sm font-medium text-emerald-600">Carbon Emissions Guide</span>
             </div>
             <div className="flex items-center gap-4">
               <Link
                 href="/"
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-sm"
               >
                 Plan a Trip
               </Link>
               <Link
                 href="/dashboard"
-                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-sm"
               >
-                Dashboard
+                Profile
               </Link>
             </div>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="mx-auto max-w-6xl px-6 py-12">
+        <main className="mx-auto max-w-7xl px-6 py-16">
           {/* Hero Section */}
-          <div className="mb-12 text-center">
-            <h1 className="mb-4 text-5xl font-bold text-emerald-900">Understanding Travel Carbon Emissions</h1>
-            <p className="mx-auto max-w-3xl text-lg text-emerald-700">
+          <div className="hero-section mb-16 text-center">
+            <h1 className="mb-6 text-6xl font-bold tracking-tight text-emerald-900 md:text-7xl">
+              Understanding Travel Carbon Emissions
+            </h1>
+            <p className="mx-auto max-w-3xl text-xl text-emerald-700/90 leading-relaxed">
               Learn about carbon emissions from different travel activities and how to make more sustainable choices.
               All values are approximate and can vary based on specific circumstances.
             </p>
           </div>
 
           {/* Key Baselines */}
-          <div className="mb-12 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-8 shadow-sm">
-            <h2 className="mb-6 text-3xl font-bold text-emerald-900">Key Baselines</h2>
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-2 text-4xl">🌍</div>
-                <h3 className="mb-2 text-lg font-semibold text-emerald-900">Global Average</h3>
-                <p className="mb-2 text-3xl font-bold text-emerald-600">16.4 kg</p>
-                <p className="text-sm text-emerald-700">CO₂ per person per day</p>
+          <div className="mb-20 rounded-3xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-50 p-10 shadow-lg backdrop-blur-sm">
+            <h2 className="mb-8 text-center text-4xl font-bold text-emerald-900">Key Baselines</h2>
+            <div className="grid gap-8 md:grid-cols-3">
+              <div className="baseline-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-8 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🌍</div>
+                <h3 className="mb-3 text-xl font-bold text-emerald-900">Global Average</h3>
+                <p className="mb-2 text-4xl font-bold text-emerald-600">16.4 kg</p>
+                <p className="text-sm font-medium text-emerald-700/80">CO₂ per person per day</p>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-2 text-4xl">🇺🇸</div>
-                <h3 className="mb-2 text-lg font-semibold text-emerald-900">US Average</h3>
-                <p className="mb-2 text-3xl font-bold text-emerald-600">45 kg</p>
-                <p className="text-sm text-emerald-700">CO₂ per person per day</p>
+              <div className="baseline-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-8 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🇺🇸</div>
+                <h3 className="mb-3 text-xl font-bold text-emerald-900">US Average</h3>
+                <p className="mb-2 text-4xl font-bold text-emerald-600">45 kg</p>
+                <p className="text-sm font-medium text-emerald-700/80">CO₂ per person per day</p>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-2 text-4xl">🎯</div>
-                <h3 className="mb-2 text-lg font-semibold text-emerald-900">Climate Target</h3>
-                <p className="mb-2 text-3xl font-bold text-emerald-600">5.5 kg</p>
-                <p className="text-sm text-emerald-700">CO₂ per person per day</p>
+              <div className="baseline-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-8 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🎯</div>
+                <h3 className="mb-3 text-xl font-bold text-emerald-900">Climate Target</h3>
+                <p className="mb-2 text-4xl font-bold text-emerald-600">5.5 kg</p>
+                <p className="text-sm font-medium text-emerald-700/80">CO₂ per person per day</p>
               </div>
             </div>
           </div>
 
           {/* Emission Categories */}
-          <div className="space-y-8">
+          <div className="space-y-16">
             {emissionCategories.map((category, categoryIdx) => (
               <div
                 key={categoryIdx}
-                className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm"
+                className="category-section rounded-3xl border border-emerald-200/50 bg-gradient-to-br from-white via-emerald-50/20 to-white p-8 shadow-lg backdrop-blur-sm"
               >
-                <div className="mb-6 flex items-center gap-3">
-                  <span className="text-4xl">{category.icon}</span>
-                  <h2 className="text-2xl font-bold text-emerald-900">{category.name}</h2>
+                <div className="mb-8 flex items-center gap-4">
+                  <span className="text-5xl transition-transform duration-300 hover:scale-110">{category.icon}</span>
+                  <h2 className="text-3xl font-bold text-emerald-900">{category.name}</h2>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                   {category.items.map((item, itemIdx) => (
                     <div
                       key={itemIdx}
-                      className="group rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-5 transition hover:border-emerald-300 hover:shadow-md"
+                      className="emission-item group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/40 p-6 shadow-md transition-all duration-300 hover:border-emerald-300 hover:shadow-xl hover:scale-[1.02]"
                     >
-                      <div className="mb-2 flex items-start justify-between">
-                        <h3 className="flex-1 text-sm font-semibold text-emerald-900">{item.activity}</h3>
-                        <div className="ml-2 text-right">
-                          <div className="text-2xl font-bold text-emerald-600">{item.co2_kg}</div>
-                          <div className="text-xs text-emerald-500">kg CO₂</div>
+                      <div className="mb-3 flex items-start justify-between">
+                        <h3 className="flex-1 text-base font-bold text-emerald-900 leading-tight">{item.activity}</h3>
+                        <div className="ml-3 text-right">
+                          <div className="text-3xl font-bold text-emerald-600">{item.co2_kg}</div>
+                          <div className="text-xs font-medium text-emerald-500">kg CO₂</div>
                         </div>
                       </div>
-                      <p className="mb-2 text-xs text-emerald-700">{item.description}</p>
+                      <p className="mb-2 text-sm text-emerald-700/90 leading-relaxed">{item.description}</p>
                       {item.comparison && (
-                        <p className="text-xs italic text-emerald-600">{item.comparison}</p>
+                        <p className="text-xs italic text-emerald-600/80 border-t border-emerald-100 pt-2 mt-2">{item.comparison}</p>
                       )}
                     </div>
                   ))}
@@ -266,48 +411,48 @@ export default function Emissions() {
           </div>
 
           {/* Fun Facts Section */}
-          <div className="mt-12 rounded-2xl border border-emerald-200 bg-gradient-to-r from-blue-50 to-emerald-50 p-8 shadow-sm">
-            <h2 className="mb-6 text-3xl font-bold text-emerald-900">🌍 Fun Facts About Travel & Carbon Emissions</h2>
+          <div className="mt-20 rounded-3xl border border-blue-200/50 bg-gradient-to-br from-blue-50 via-emerald-50/50 to-blue-50 p-10 shadow-lg backdrop-blur-sm">
+            <h2 className="mb-10 text-center text-4xl font-bold text-emerald-900">🌍 Fun Facts About Travel & Carbon Emissions</h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">✈️</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Aviation Impact</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">✈️</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Aviation Impact</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   Aviation accounts for about 2.5% of global CO₂ emissions, but this number is growing rapidly as more people travel.
                 </p>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">🌳</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Tree Power</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🌳</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Tree Power</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   One mature tree can absorb about 22 kg of CO₂ per year. To offset a round-trip flight from NYC to London, you'd need to plant about 50 trees!
                 </p>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">🚂</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Train vs Plane</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🚂</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Train vs Plane</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   Taking a train instead of a plane for a 500 km journey can reduce your carbon footprint by up to 90%!
                 </p>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">🍔</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Food Footprint</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🍔</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Food Footprint</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   A single hamburger has a carbon footprint of about 2.5 kg CO₂ - that's more than driving 10 km in a car!
                 </p>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">🌊</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Cruise Ships</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">🌊</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Cruise Ships</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   A large cruise ship can emit as much CO₂ as 12,000 cars in a single day. That's equivalent to a small city!
                 </p>
               </div>
-              <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-sm">
-                <div className="mb-3 text-4xl">💡</div>
-                <h3 className="mb-2 font-semibold text-emerald-900">Small Changes, Big Impact</h3>
-                <p className="text-sm text-emerald-700">
+              <div className="fun-fact-card group rounded-2xl border border-blue-200/50 bg-gradient-to-br from-white to-blue-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+                <div className="mb-4 text-5xl transition-transform duration-300 group-hover:scale-110">💡</div>
+                <h3 className="mb-3 text-lg font-bold text-emerald-900">Small Changes, Big Impact</h3>
+                <p className="text-sm leading-relaxed text-emerald-700/90">
                   If everyone chose one train journey instead of a short flight per year, we could save millions of tons of CO₂!
                 </p>
               </div>
@@ -315,121 +460,181 @@ export default function Emissions() {
           </div>
 
           {/* Incentives Section */}
-          <div className="mt-12 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 p-8 shadow-sm">
-            <h2 className="mb-6 text-3xl font-bold text-emerald-900">🎁 Why Use GreenTrip for Sustainable Travel?</h2>
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">💰</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Save Money & Emissions</h3>
-                </div>
-                <p className="text-emerald-700">
-                  Our platform finds the best balance between cost and carbon footprint. You can often save money while reducing your environmental impact by choosing more efficient transportation options.
-                </p>
+          <div className="mt-20 rounded-3xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50 via-green-50/50 to-emerald-50 p-10 shadow-lg backdrop-blur-sm">
+            <h2 className="mb-10 text-center text-4xl font-bold text-emerald-900">🎁 Why Use GreenTrip for Sustainable Travel?</h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">💰</div>
+                <h3 className="text-xl font-bold text-emerald-900">Save Money & Emissions</h3>
               </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">🌱</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Make Informed Choices</h3>
-                </div>
-                <p className="text-emerald-700">
-                  See the carbon footprint of every trip option before you book. Knowledge is power - make decisions that align with your values.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">🏆</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Build Your Green Profile</h3>
-                </div>
-                <p className="text-emerald-700">
-                  Track your travel carbon footprint over time. Watch your impact decrease as you make more sustainable choices and feel good about your contribution to the planet.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">🎯</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Personalized Recommendations</h3>
-                </div>
-                <p className="text-emerald-700">
-                  Get itinerary suggestions that match your preferences while prioritizing lower-emission options. You don't have to sacrifice your travel experience to be sustainable.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">🌍</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Join the Movement</h3>
-                </div>
-                <p className="text-emerald-700">
-                  Be part of a growing community of conscious travelers. Every sustainable trip you take inspires others and creates a positive ripple effect.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="text-4xl">✨</div>
-                  <h3 className="text-xl font-bold text-emerald-900">Discover Hidden Gems</h3>
-                </div>
-                <p className="text-emerald-700">
-                  Lower-emission travel often means exploring local destinations and authentic experiences you might have missed. Sometimes the best trips are closer than you think!
-                </p>
-              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                Our platform finds the best balance between cost and carbon footprint. You can often save money while reducing your environmental impact by choosing more efficient transportation options.
+              </p>
             </div>
+            <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">🌱</div>
+                <h3 className="text-xl font-bold text-emerald-900">Make Informed Choices</h3>
+              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                See the carbon footprint of every trip option before you book. Knowledge is power - make decisions that align with your values.
+              </p>
+            </div>
+            <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">🏆</div>
+                <h3 className="text-xl font-bold text-emerald-900">Build Your Green Profile</h3>
+              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                Track your travel carbon footprint over time. Watch your impact decrease as you make more sustainable choices and feel good about your contribution to the planet.
+              </p>
+            </div>
+            <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">🎯</div>
+                <h3 className="text-xl font-bold text-emerald-900">Personalized Recommendations</h3>
+              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                Get itinerary suggestions that match your preferences while prioritizing lower-emission options. You don't have to sacrifice your travel experience to be sustainable.
+              </p>
+            </div>
+            <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">🌍</div>
+                <h3 className="text-xl font-bold text-emerald-900">Join the Movement</h3>
+              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                Be part of a growing community of conscious travelers. Every sustainable trip you take inspires others and creates a positive ripple effect.
+              </p>
+            </div>
+            <div className="benefit-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-emerald-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="text-5xl transition-transform duration-300 group-hover:scale-110">✨</div>
+                <h3 className="text-xl font-bold text-emerald-900">Discover Hidden Gems</h3>
+              </div>
+              <p className="leading-relaxed text-emerald-700/90">
+                Lower-emission travel often means exploring local destinations and authentic experiences you might have missed. Sometimes the best trips are closer than you think!
+              </p>
+            </div>
+          </div>
           </div>
 
           {/* Tips Section */}
-          <div className="mt-12 rounded-2xl border border-emerald-200 bg-gradient-to-r from-amber-50 to-emerald-50 p-8 shadow-sm">
-            <h2 className="mb-6 text-3xl font-bold text-emerald-900">Tips to Reduce Your Travel Carbon Footprint</h2>
+          <div className="mt-20 rounded-3xl border border-amber-200/50 bg-gradient-to-br from-amber-50 via-emerald-50/50 to-amber-50 p-10 shadow-lg backdrop-blur-sm">
+            <h2 className="mb-10 text-center text-4xl font-bold text-emerald-900">Tips to Reduce Your Travel Carbon Footprint</h2>
             <div className="grid gap-6 md:grid-cols-2">
-              <div className="rounded-xl border border-emerald-100 bg-white p-6">
-                <h3 className="mb-3 text-lg font-semibold text-emerald-900">✈️ Choose Lower-Emissions Transportation</h3>
-                <ul className="space-y-2 text-sm text-emerald-700">
-                  <li>• Take trains instead of short flights when possible</li>
-                  <li>• Choose direct flights over connecting flights</li>
-                  <li>• Consider economy class (more efficient per passenger)</li>
-                  <li>• Use public transportation at your destination</li>
+              <div className="tip-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-amber-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
+                <h3 className="mb-4 text-xl font-bold text-emerald-900 flex items-center gap-2">
+                  <span className="text-3xl">✈️</span>
+                  Choose Lower-Emissions Transportation
+                </h3>
+                <ul className="space-y-2.5 text-sm leading-relaxed text-emerald-700/90">
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Take trains instead of short flights when possible</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Choose direct flights over connecting flights</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Consider economy class (more efficient per passenger)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Use public transportation at your destination</span>
+                  </li>
                 </ul>
               </div>
-              <div className="rounded-xl border border-emerald-100 bg-white p-6">
-                <h3 className="mb-3 text-lg font-semibold text-emerald-900">🏨 Choose Sustainable Accommodations</h3>
-                <ul className="space-y-2 text-sm text-emerald-700">
-                  <li>• Stay in eco-certified hotels</li>
-                  <li>• Choose smaller, locally-owned accommodations</li>
-                  <li>• Reuse towels and linens</li>
-                  <li>• Turn off lights and AC when leaving</li>
+              <div className="tip-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-amber-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
+                <h3 className="mb-4 text-xl font-bold text-emerald-900 flex items-center gap-2">
+                  <span className="text-3xl">🏨</span>
+                  Choose Sustainable Accommodations
+                </h3>
+                <ul className="space-y-2.5 text-sm leading-relaxed text-emerald-700/90">
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Stay in eco-certified hotels</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Choose smaller, locally-owned accommodations</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Reuse towels and linens</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Turn off lights and AC when leaving</span>
+                  </li>
                 </ul>
               </div>
-              <div className="rounded-xl border border-emerald-100 bg-white p-6">
-                <h3 className="mb-3 text-lg font-semibold text-emerald-900">🍽️ Make Sustainable Food Choices</h3>
-                <ul className="space-y-2 text-sm text-emerald-700">
-                  <li>• Eat local and seasonal foods</li>
-                  <li>• Choose plant-based options when possible</li>
-                  <li>• Avoid food waste</li>
-                  <li>• Support local restaurants</li>
+              <div className="tip-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-amber-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
+                <h3 className="mb-4 text-xl font-bold text-emerald-900 flex items-center gap-2">
+                  <span className="text-3xl">🍽️</span>
+                  Make Sustainable Food Choices
+                </h3>
+                <ul className="space-y-2.5 text-sm leading-relaxed text-emerald-700/90">
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Eat local and seasonal foods</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Choose plant-based options when possible</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Avoid food waste</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Support local restaurants</span>
+                  </li>
                 </ul>
               </div>
-              <div className="rounded-xl border border-emerald-100 bg-white p-6">
-                <h3 className="mb-3 text-lg font-semibold text-emerald-900">🌱 Offset Your Emissions</h3>
-                <ul className="space-y-2 text-sm text-emerald-700">
-                  <li>• Support carbon offset programs</li>
-                  <li>• Plant trees or support reforestation</li>
-                  <li>• Choose eco-friendly tour operators</li>
-                  <li>• Travel less frequently but for longer periods</li>
+              <div className="tip-card group rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-white to-amber-50/30 p-7 shadow-md transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
+                <h3 className="mb-4 text-xl font-bold text-emerald-900 flex items-center gap-2">
+                  <span className="text-3xl">🌱</span>
+                  Offset Your Emissions
+                </h3>
+                <ul className="space-y-2.5 text-sm leading-relaxed text-emerald-700/90">
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Support carbon offset programs</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Plant trees or support reforestation</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Choose eco-friendly tour operators</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-500 mt-1">•</span>
+                    <span>Travel less frequently but for longer periods</span>
+                  </li>
                 </ul>
               </div>
             </div>
           </div>
 
           {/* Call to Action */}
-          <div className="mt-12 text-center">
-            <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
-              <h2 className="mb-4 text-2xl font-bold text-emerald-900">Plan Your Next Sustainable Trip</h2>
-              <p className="mb-6 text-emerald-700">
+          <div className="cta-section mt-20 text-center">
+            <div className="rounded-3xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-50 p-12 shadow-xl backdrop-blur-sm">
+              <h2 className="mb-5 text-4xl font-bold text-emerald-900">Plan Your Next Sustainable Trip</h2>
+              <p className="mb-8 text-lg leading-relaxed text-emerald-700/90 max-w-2xl mx-auto">
                 Use GreenTrip to plan eco-friendly trips that consider carbon emissions alongside price and preferences.
               </p>
               <Link
                 href="/"
-                className="inline-block rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 px-8 py-3 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
+                className="inline-block rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 px-10 py-4 text-base font-bold text-white shadow-lg transition-all duration-300 hover:shadow-2xl hover:scale-105 hover:from-emerald-600 hover:to-emerald-500"
               >
-                Plan a Green Trip
+                Plan a Green Trip →
               </Link>
             </div>
           </div>

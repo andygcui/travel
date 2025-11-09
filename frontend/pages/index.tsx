@@ -303,15 +303,19 @@ export default function Home() {
                     href="/friends"
                     className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    Friends
+                    Leaderboard
                   </a>
                   <a
                     href="/dashboard"
                     className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    Dashboard
+                    Profile
                   </a>
-                  <span className="text-sm text-white/80">{user.email}</span>
+                  <span className="text-sm text-white/80">
+                    {user.user_metadata?.first_name && user.user_metadata?.last_name
+                      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                      : user.user_metadata?.name || user.email}
+                  </span>
                   <button
                     onClick={handleSignOut}
                     className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
