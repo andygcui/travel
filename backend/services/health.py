@@ -58,7 +58,7 @@ def _fallback_health() -> list[HealthAdvisory]:
             title="Stay hydrated & pack essentials",
             description="Carry a reusable water bottle, basic meds, and travel insurance documentation.",
             severity="low",
-            source="TripSmith AI",
+            source="GreenTrip AI",
         )
     ]
 

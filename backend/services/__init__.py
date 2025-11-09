@@ -1,2 +1,2 @@
-# Service package for TripSmith backend
+# Service package for GreenTrip backend
 

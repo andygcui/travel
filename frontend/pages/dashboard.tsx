@@ -1154,7 +1154,7 @@ export default function Dashboard() {
   return (
     <>
       <Head>
-        <title>My Trips | TripSmith</title>
+        <title>My Trips | GreenTrip</title>
         <meta name="description" content="View and manage your saved travel itineraries" />
       </Head>
 
@@ -1164,7 +1164,7 @@ export default function Dashboard() {
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-3">
               <Link href="/" className="text-2xl font-bold text-[#34d399]">
-                TripSmith
+                GreenTrip
               </Link>
               <span className="text-sm text-emerald-600">Dashboard</span>
             </div>

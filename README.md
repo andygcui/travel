@@ -119,7 +119,7 @@ CLIMATIQ_KEY=your_climatiq_key
     "mode": "balanced"
   }
   ```
-- `POST /plan` - Legacy TripSmith endpoint
+- `POST /plan` - Legacy GreenTrip endpoint
 - `POST /bookings` - Create booking
 
 ## 📁 Project Structure

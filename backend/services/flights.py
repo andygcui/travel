@@ -80,7 +80,7 @@ def _fallback_flights(request: TripPlanRequest) -> List[FlightOption]:
             price=420.0,
             segments=[
                 FlightSegment(
-                    carrier="TripSmith Air",
+                    carrier="GreenTrip Air",
                     flight_number="TS123",
                     origin=request.origin or "HUB",
                     destination=request.destination,

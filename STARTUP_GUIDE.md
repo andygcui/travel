@@ -120,7 +120,7 @@ cd photon && node auto-responder-friend.mjs
 curl http://localhost:8000/plan
 ```
 
-Should return: `{"message":"TripSmith backend running!"}`
+Should return: `{"message":"GreenTrip backend running!"}`
 
 ### Check Bot Health:
 The bot will show health checks every 30 seconds:

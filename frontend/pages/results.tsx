@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { gsap } from "gsap";
@@ -1638,7 +1639,12 @@ export default function Results() {
       : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-emerald-50">
+    <>
+      <Head>
+        <title>Itinerary | GreenTrip</title>
+        <meta name="description" content="View your personalized travel itinerary" />
+      </Head>
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-emerald-50">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white/70 backdrop-blur-lg">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-12">
@@ -2779,6 +2785,7 @@ export default function Results() {
       >
         <span className="text-2xl">{showChat ? "×" : "💬"}</span>
       </button>
-    </div>
+      </div>
+    </>
   );
 };

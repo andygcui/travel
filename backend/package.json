@@ -1,7 +1,7 @@
 {
-  "name": "tripsmith-backend",
+  "name": "greentrip-backend",
   "version": "1.0.0",
-  "description": "TripSmith AI Backend",
+  "description": "GreenTrip AI Backend",
   "scripts": {
     "start": ".venv/bin/uvicorn app:app --reload"
   },

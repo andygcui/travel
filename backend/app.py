@@ -33,7 +33,7 @@ app.include_router(photon_router, prefix="/photon", tags=["photon"])
 
 @app.get("/plan")
 def read_root():
-    return {"message": "TripSmith backend running!"}
+    return {"message": "GreenTrip backend running!"}
 
 
 @app.get("/latest_itinerary")

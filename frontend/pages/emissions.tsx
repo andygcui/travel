@@ -163,7 +163,7 @@ export default function Emissions() {
   return (
     <>
       <Head>
-        <title>Carbon Emissions Guide | TripSmith</title>
+        <title>Carbon Emissions Guide | GreenTrip</title>
         <meta name="description" content="Learn about carbon emissions from travel and how to reduce your footprint" />
       </Head>
 
@@ -173,7 +173,7 @@ export default function Emissions() {
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-3">
               <Link href="/" className="text-2xl font-bold text-[#34d399]">
-                TripSmith
+                GreenTrip
               </Link>
               <span className="text-sm text-emerald-600">Carbon Emissions Guide</span>
             </div>
@@ -316,7 +316,7 @@ export default function Emissions() {
 
           {/* Incentives Section */}
           <div className="mt-12 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 p-8 shadow-sm">
-            <h2 className="mb-6 text-3xl font-bold text-emerald-900">🎁 Why Use TripSmith for Sustainable Travel?</h2>
+            <h2 className="mb-6 text-3xl font-bold text-emerald-900">🎁 Why Use GreenTrip for Sustainable Travel?</h2>
             <div className="grid gap-6 md:grid-cols-2">
               <div className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center gap-3">
@@ -423,7 +423,7 @@ export default function Emissions() {
             <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm">
               <h2 className="mb-4 text-2xl font-bold text-emerald-900">Plan Your Next Sustainable Trip</h2>
               <p className="mb-6 text-emerald-700">
-                Use TripSmith to plan eco-friendly trips that consider carbon emissions alongside price and preferences.
+                Use GreenTrip to plan eco-friendly trips that consider carbon emissions alongside price and preferences.
               </p>
               <Link
                 href="/"

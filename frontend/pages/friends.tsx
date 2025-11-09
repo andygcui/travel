@@ -268,7 +268,7 @@ export default function Friends() {
   return (
     <>
       <Head>
-        <title>Friends | TripSmith</title>
+        <title>Friends | GreenTrip</title>
         <meta name="description" content="Manage your friends and friend requests" />
       </Head>
 
@@ -278,7 +278,7 @@ export default function Friends() {
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <div className="flex items-center gap-3">
               <Link href="/" className="text-2xl font-bold text-[#34d399]">
-                TripSmith
+                GreenTrip
               </Link>
               <span className="text-sm text-emerald-600">Friends</span>
             </div>
