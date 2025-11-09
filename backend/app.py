@@ -13,7 +13,7 @@ from services.preference_aggregator import promote_frequent_preferences
 from services.supabase_client import get_supabase_client
 from services.imessage_service import get_imessage_service, is_available
 from photon_integration.routes import router as photon_router
-from photon_integration.itinerary_cache import store_itinerary
+from photon_integration.itinerary_cache import store_itinerary, get_latest_itinerary
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,16 @@ app.include_router(photon_router, prefix="/photon", tags=["photon"])
 @app.get("/plan")
 def read_root():
     return {"message": "TripSmith backend running!"}
+
+
+@app.get("/latest_itinerary")
+async def get_latest_itinerary_endpoint():
+    """Get the latest generated itinerary for Photon AI access"""
+    itinerary = get_latest_itinerary()
+    if itinerary:
+        return {"itinerary": itinerary, "found": True}
+    else:
+        return {"itinerary": None, "found": False, "message": "No itinerary found in cache. Generate one first using /generate_itinerary"}
 
 
 @app.post("/generate_itinerary", response_model=GreenTripItineraryResponse)
