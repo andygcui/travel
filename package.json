@@ -3,7 +3,27 @@
     "supabase": "^2.54.11"
   },
   "dependencies": {
+    "@photon-ai/imessage-kit": "^1.1.3",
     "@react-google-maps/api": "^2.20.7",
-    "@supabase/supabase-js": "^2.80.0"
-  }
+    "@supabase/supabase-js": "^2.80.0",
+    "better-sqlite3": "^12.4.1"
+  },
+  "name": "travel",
+  "version": "1.0.0",
+  "description": "A full-stack web application that generates optimized eco-friendly travel itineraries using AI and live API integrations.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andygcui/travel.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/andygcui/travel/issues"
+  },
+  "homepage": "https://github.com/andygcui/travel#readme"
 }

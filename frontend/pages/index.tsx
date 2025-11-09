@@ -491,7 +491,7 @@ export default function Home() {
                       onChange={(e) => {
                         const newLikes = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
                         setLikes(newLikes);
-                        saveUserPreferences();
+                        // REMOVED: saveUserPreferences() - preferences from trip form should NOT be saved
                       }}
                       className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-sm text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     />
@@ -507,7 +507,7 @@ export default function Home() {
                       onChange={(e) => {
                         const newDislikes = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
                         setDislikes(newDislikes);
-                        saveUserPreferences();
+                        // REMOVED: saveUserPreferences() - preferences from trip form should NOT be saved
                       }}
                       className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-sm text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     />
