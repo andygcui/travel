@@ -503,6 +503,12 @@ export default function Dashboard() {
               <span className="text-sm text-emerald-600">Dashboard</span>
             </div>
             <div className="flex items-center gap-4">
+              <Link
+                href="/emissions"
+                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                🌍 Emissions Guide
+              </Link>
               <span className="text-sm text-emerald-700">{user?.email}</span>
               <button
                 onClick={() => setShowDeleteConfirm(true)}

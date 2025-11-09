@@ -296,6 +296,12 @@ export default function Home() {
           <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
             <div className="text-2xl font-bold text-[#3cb371]">GreenTrip</div>
             <div className="flex items-center gap-4">
+              <a
+                href="/emissions"
+                className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+              >
+                🌍 Emissions Guide
+              </a>
               {user ? (
                 <>
                   <a
