@@ -20,6 +20,32 @@ const preferenceOptions = [
 
 const dietaryOptions = ["vegetarian", "vegan", "gluten-free", "dairy-free", "halal", "kosher", "pescatarian"]
 
+const fetchWithTimeout = async (input: RequestInfo | URL, init: RequestInit = {}, timeout = 4000) => {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeout)
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal })
+    return response
+  } finally {
+    clearTimeout(id)
+  }
+}
+
+const ensureUserPreferencesRecord = async (payload: Record<string, any>) => {
+  try {
+    await fetchWithTimeout(
+      'http://localhost:8000/user/preferences/save',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    )
+  } catch (err) {
+    console.error('Error ensuring user_preferences record:', err)
+  }
+}
+
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false)
   const [step, setStep] = useState<'credentials' | 'preferences'>('credentials')
@@ -120,27 +146,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
             setNewUserSession(data.session)
           }
           
-          // Create user_preferences record for all users with username
-          // This ensures usernames can be saved for all users
-          try {
-            await fetch('http://localhost:8000/user/preferences/save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user_id: data.user.id,
-                username: username.trim(),
-                preferences: [],
-                likes: [],
-                dislikes: [],
-                dietary_restrictions: [],
-              }),
-            })
-            console.log('Created user_preferences record for new user with username')
-          } catch (err) {
-            console.error('Error creating user_preferences record:', err)
-            // Continue anyway - record will be created when preferences are saved
-          }
-          
+          ensureUserPreferencesRecord({
+            user_id: data.user.id,
+            username: username.trim(),
+            preferences: [],
+            likes: [],
+            dislikes: [],
+            dietary_restrictions: [],
+          })
+
           setStep('preferences')
         } else {
           // Email confirmation required
@@ -157,23 +171,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         // Ensure user_preferences record exists for existing users
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
-          try {
-            await fetch('http://localhost:8000/user/preferences/save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user_id: session.user.id,
-                preferences: [],
-                likes: [],
-                dislikes: [],
-                dietary_restrictions: [],
-              }),
-            })
-            console.log('Ensured user_preferences record exists for user')
-          } catch (err) {
-            console.error('Error ensuring user_preferences record:', err)
-            // Continue anyway
-          }
+          ensureUserPreferencesRecord({
+            user_id: session.user.id,
+            preferences: [],
+            likes: [],
+            dislikes: [],
+            dietary_restrictions: [],
+          })
         }
         
         onAuthSuccess()
@@ -211,11 +215,14 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         requestBody.username = usernameToSave
       }
       
-      const response = await fetch('http://localhost:8000/user/preferences/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      })
+      const response = await fetchWithTimeout(
+        'http://localhost:8000/user/preferences/save',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+      )
       
       if (!response.ok) {
         const errorText = await response.text()
@@ -223,7 +230,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         return false
       }
       
-      const data = await response.json()
+      const data = await response.json().catch(() => null)
       console.log('Preferences saved successfully:', data)
       return true
     } catch (err: any) {

@@ -430,38 +430,11 @@ export default function Results() {
       router.push("/");
     }
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadFriends(session.user.id);
-        const tripId = savedTripId || storedTripId || (stored ? (() => {
-          try {
-            const parsed: ItineraryResponse = JSON.parse(stored);
-            return (parsed as any)?.trip_id || (parsed as any)?.id;
-          } catch {
-            return null;
-          }
-        })() : null);
-        
-        if (tripId) {
-          // Only verify if tripId came from storedTripId (from dashboard), not from itinerary data
-          // If it came from storedTripId, it means it's a saved trip from dashboard
-          // If it came from itinerary data, it's a new trip that shouldn't be auto-saved
-          if (storedTripId) {
-            // This is a trip from dashboard - verify it's saved
-            const isSaved = await verifyTripIsSaved(tripId, session.user.id);
-            if (isSaved) {
-              setSaved(true);
-              setSavedTripId(tripId);
-            }
-          }
-          // Always load trip status if tripId exists
-          loadTripStatus(tripId);
-        }
-      }
-    });
+    let isMounted = true;
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    const handleSessionChange = async (session: any) => {
+      if (!isMounted) return;
+
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
@@ -476,23 +449,36 @@ export default function Results() {
         })() : null);
         
         if (tripId) {
-          // Only verify if tripId came from storedTripId (from dashboard), not from itinerary data
-          // If it came from storedTripId, it means it's a saved trip from dashboard
-          // If it came from itinerary data, it's a new trip that shouldn't be auto-saved
           if (storedTripId) {
-            // This is a trip from dashboard - verify it's saved
             const isSaved = await verifyTripIsSaved(tripId, session.user.id);
             if (isSaved) {
               setSaved(true);
               setSavedTripId(tripId);
+            } else {
+              setSaved(false);
             }
+          } else {
+            setSaved(false);
+            setSavedTripId(null);
           }
-          // Always load trip status if tripId exists
           loadTripStatus(tripId);
         }
       }
+    };
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      handleSessionChange(session);
     });
-  }, [router]);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSessionChange(session);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [router, savedTripId]);
 
   const loadFriends = async (userId: string) => {
     if (!userId) {
@@ -1053,6 +1039,32 @@ export default function Results() {
       alert(`Failed to save trip: ${err.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUnsaveTrip = async () => {
+    if (!user || !savedTripId) {
+      return;
+    }
+
+    const confirmUnsave = window.confirm("Remove this trip from your saved plans?");
+    if (!confirmUnsave) return;
+
+    try {
+      const { error } = await supabase
+        .from("saved_trips")
+        .delete()
+        .eq("id", savedTripId)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      setSaved(false);
+      setSavedTripId(null);
+      sessionStorage.removeItem("savedTripId");
+      alert("Trip removed from saved plans.");
+    } catch (err: any) {
+      alert(`Failed to remove trip: ${err.message}`);
     }
   };
 
@@ -1806,17 +1818,23 @@ export default function Results() {
                     </button>
                   </>
                 )}
-                <button
-                  onClick={handleSaveTrip}
-                  disabled={saving || saved}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                    saved
-                      ? "bg-emerald-500 text-white"
-                      : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  {saved ? "Saved" : saving ? "Saving…" : "Save"}
-                </button>
+                {saved ? (
+                  <button
+                    onClick={handleUnsaveTrip}
+                    disabled={saving}
+                    className="rounded-full px-4 py-2 text-sm font-medium transition bg-emerald-500 text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Removing…" : "Saved ✓"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSaveTrip}
+                    disabled={saving}
+                    className="rounded-full px-4 py-2 text-sm font-medium transition border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                )}
               </>
             )}
           </div>

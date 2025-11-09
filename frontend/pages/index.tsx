@@ -62,24 +62,35 @@ export default function Home() {
 
   // Check for authenticated user and load preferences
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserPreferences(session.user.id);
-      }
-    });
+    let isMounted = true;
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const handleSessionChange = (session: any) => {
+      if (!isMounted) return;
+
       if (session?.user) {
+        setUser(session.user);
         loadUserPreferences(session.user.id);
       } else {
+        setUser(null);
         setLikes([]);
         setDislikes([]);
         setDietaryRestrictions([]);
         setPreferences([]);
       }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSessionChange(session);
     });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSessionChange(session);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const loadUserPreferences = async (userId: string) => {
@@ -98,7 +109,11 @@ export default function Home() {
         setLikes(data.likes || []);
         setDislikes(data.dislikes || []);
         setDietaryRestrictions(data.dietary_restrictions || []);
-        setPreferences((data.preferences || []).map((pref: string) => pref?.toLowerCase?.() || "").filter(Boolean));
+        setPreferences(
+          (data.preferences || [])
+            .map((pref: string) => (typeof pref === "string" ? pref.trim().toLowerCase() : ""))
+            .filter(Boolean),
+        );
       }
 
       // Also load chat-learned preferences
@@ -255,6 +270,8 @@ export default function Home() {
         dislikes,
         dietary_restrictions: dietaryRestrictions,
       }));
+      sessionStorage.removeItem("savedTripId");
+      sessionStorage.removeItem("collaborator_id");
       router.push("/results");
     } catch (err: any) {
       if (err.name === 'AbortError') {
