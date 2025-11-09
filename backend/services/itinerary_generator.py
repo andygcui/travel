@@ -44,8 +44,11 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     4. Build prompt and call Dedalus
     5. Return formatted response
     """
+    import time
+    t0 = time.time()
     # Normalise dates and duration
     start_date, end_date, trip_days = _resolve_trip_dates(request)
+    logger.info(f"[T+{time.time()-t0:.2f}s] Trip dates resolved: {start_date} to {end_date} ({trip_days} days)")
     normalized_request = request.copy(
         update={
             "start_date": start_date,
@@ -55,9 +58,8 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     )
 
     # Step 1: Geocode destination
-    logger.info(f"Geocoding destination: {request.destination}")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Geocoding destination: {request.destination}")
     latitude, longitude = await google_places_service.geocode_destination(request.destination)
-    
     if not latitude or not longitude:
         logger.warning(f"Could not geocode {request.destination}, attempting fallback coordinates")
         fallback_coords = {
@@ -81,8 +83,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
                     "GOOGLE_PLACES_KEY is not set; please add it to backend/.env to enable accurate geocoding."
                 )
             latitude, longitude = 48.8566, 2.3522
-    
-    logger.info(f"Geocoded to: {latitude}, {longitude}")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Geocoded to: {latitude}, {longitude}")
     
     # Step 3: Fetch data in parallel
     # Resolve origin to airport code
@@ -99,7 +100,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         destination_code = request.destination
     
     # Fetch flights
-    logger.info(f"Fetching flights from {origin_code} ({origin_input}) to {destination_code} ({request.destination})")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Fetching flights from {origin_code} ({origin_input}) to {destination_code} ({request.destination})")
     flights = await amadeus_flights.fetch_flights_amadeus(
         origin=origin_code,
         destination=destination_code,
@@ -107,12 +108,12 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         return_date=end_date.isoformat(),
         adults=1,
     )
-    logger.info(f"Found {len(flights)} flight options (pre-dedupe)")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Found {len(flights)} flight options (pre-dedupe)")
     flights = _dedupe_flight_options(flights)
-    logger.info(f"After dedupe: {len(flights)} unique flight options")
+    logger.info(f"[T+{time.time()-t0:.2f}s] After dedupe: {len(flights)} unique flight options")
     
     # Fetch hotels
-    logger.info(f"Fetching hotels near {latitude}, {longitude}")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Fetching hotels near {latitude}, {longitude}")
     hotels = await amadeus_hotels.fetch_hotels_amadeus(
         latitude=latitude,
         longitude=longitude,
@@ -120,20 +121,20 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         check_out=end_date.isoformat(),
         adults=1,
     )
-    logger.info(f"Found {len(hotels)} hotel options")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Found {len(hotels)} hotel options")
     
     # Fetch weather
-    logger.info(f"Fetching weather forecast")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Fetching weather forecast")
     weather_daily, daypart_weather = await openweather_service.fetch_weather_openweather(
         latitude=latitude,
         longitude=longitude,
         start=start_date,
         end=end_date,
     )
-    logger.info(f"Got {len(weather_daily)} days of weather data")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Got {len(weather_daily)} days of weather data")
     
     # Fetch attractions
-    logger.info(f"Fetching attractions for preferences: {request.preferences}")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Fetching attractions for preferences: {request.preferences}")
     poi_limit = max(6, trip_days * 3)
     attractions = await google_places_service.fetch_attractions_google(
         destination=request.destination,
@@ -142,7 +143,7 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         preferences=request.preferences,
         limit=poi_limit,
     )
-    logger.info(f"Found {len(attractions)} attractions")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Found {len(attractions)} attractions")
     
     # Step 4: Estimate emissions if missing
     for flight in flights:
@@ -171,6 +172,36 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
                 hotel.emissions_kg = climatiq_service.estimate_hotel_emissions_fallback(
                     trip_days
                 ) / trip_days
+    logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for flights and hotels")
+    for flight in flights:
+        if not flight.emissions_kg:
+            logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for flight {flight.origin}->{flight.destination}")
+            emissions = await climatiq_service.estimate_flight_emissions(
+                origin=origin_code,
+                destination=destination_code,
+                passengers=1,
+            )
+            if emissions:
+                flight.emissions_kg = emissions
+            else:
+                logger.warning(f"[T+{time.time()-t0:.2f}s] Climatiq failed, using fallback for flight {flight.origin}->{flight.destination}")
+                flight.emissions_kg = climatiq_service.estimate_flight_emissions_fallback(
+                    origin_code, destination_code, 1
+                )
+    
+    for hotel in hotels:
+        if not hotel.emissions_kg:
+            logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for hotel")
+            emissions = await climatiq_service.estimate_hotel_emissions(
+                nights=trip_days,
+            )
+            if emissions:
+                hotel.emissions_kg = emissions / trip_days  # Per night
+            else:
+                logger.warning(f"[T+{time.time()-t0:.2f}s] Climatiq failed, using fallback for hotel")
+                hotel.emissions_kg = climatiq_service.estimate_hotel_emissions_fallback(
+                    trip_days
+                ) / trip_days
     
     # Step 5: Build prompt and call Dedalus
     logger.info("Building Dedalus prompt...")
@@ -190,10 +221,10 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     )
     
     # Call Dedalus
-    logger.info("Calling Dedalus API...")
+    logger.info(f"[T+{time.time()-t0:.2f}s] Calling Dedalus API...")
     try:
         dedalus_response = await dedalus_client.call_dedalus(prompt, max_steps=10)
-        logger.info(f"Dedalus response received: {type(dedalus_response)}")
+        logger.info(f"[T+{time.time()-t0:.2f}s] Dedalus response received: {type(dedalus_response)}")
         logger.info(f"Dedalus returned {len(dedalus_response.get('days', []))} days")
     except Exception as e:
         logger.error(f"Dedalus API error: {str(e)}")
@@ -216,11 +247,31 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
     rationale = dedalus_response.get("rationale", "Itinerary generated based on available data.")
     
     # Convert days to DedalusItineraryDay format
+    import math
+    from geopy.distance import geodesic
     itinerary_days: List[DedalusItineraryDay] = []
     day_attraction_bundles: List[DayAttractionBundle] = []
-    attraction_pointer = 0
-    attraction_pool = attractions or []
-    for day_data in days:
+    attraction_pool = [poi for poi in (attractions or []) if poi.latitude and poi.longitude]
+    used_pois = set()
+    def cluster_and_order_pois(pois, n):
+        # Simple greedy nearest-neighbor for n POIs
+        if not pois or n == 0:
+            return []
+        selected = []
+        remaining = pois[:]
+        # Start from the city center
+        current = (latitude, longitude)
+        for _ in range(n):
+            if not remaining:
+                break
+            # Find nearest unused POI
+            nearest = min(remaining, key=lambda poi: geodesic(current, (poi.latitude, poi.longitude)).km)
+            selected.append(nearest)
+            current = (nearest.latitude, nearest.longitude)
+            remaining.remove(nearest)
+        return selected
+
+    for i, day_data in enumerate(days):
         day_number = day_data.get("day", len(itinerary_days) + 1)
         itinerary_day = DedalusItineraryDay(
             day=day_number,
@@ -230,20 +281,16 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
             )
         itinerary_days.append(itinerary_day)
 
+        # For each day, pick 3 closest unused POIs
+        available_pois = [poi for poi in attraction_pool if poi.name not in used_pois]
+        ordered_pois = cluster_and_order_pois(available_pois, 3)
+        for poi in ordered_pois:
+            used_pois.add(poi.name)
         bundle = DayAttractionBundle(day=day_number)
-        if attraction_pool:
-            bundle.morning = attraction_pool[attraction_pointer % len(attraction_pool)]
-            attraction_pointer += 1
-            if len(attraction_pool) > 1:
-                bundle.afternoon = attraction_pool[attraction_pointer % len(attraction_pool)]
-                attraction_pointer += 1
-            else:
-                bundle.afternoon = bundle.morning
-            if len(attraction_pool) > 2:
-                bundle.evening = attraction_pool[attraction_pointer % len(attraction_pool)]
-                attraction_pointer += 1
-            else:
-                bundle.evening = bundle.afternoon or bundle.morning
+        if ordered_pois:
+            bundle.morning = ordered_pois[0]
+            bundle.afternoon = ordered_pois[1] if len(ordered_pois) > 1 else ordered_pois[0]
+            bundle.evening = ordered_pois[2] if len(ordered_pois) > 2 else (ordered_pois[1] if len(ordered_pois) > 1 else ordered_pois[0])
         day_attraction_bundles.append(bundle)
     
     # Calculate eco score (0-100)
@@ -252,11 +299,11 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
 
     flight_summaries = _summarize_flights(flights)
     
-    logger.info(f"✅ Itinerary generation complete!")
-    logger.info(f"   - {len(itinerary_days)} days generated")
-    logger.info(f"   - Total cost: ${totals.get('cost', 0):.2f}")
-    logger.info(f"   - Total emissions: {total_emissions:.1f} kg CO₂")
-    logger.info(f"   - Eco score: {eco_score:.0f}/100")
+    logger.info(f"[T+{time.time()-t0:.2f}s] ✅ Itinerary generation complete!")
+    logger.info(f"[T+{time.time()-t0:.2f}s]    - {len(itinerary_days)} days generated")
+    logger.info(f"[T+{time.time()-t0:.2f}s]    - Total cost: ${totals.get('cost', 0):.2f}")
+    logger.info(f"[T+{time.time()-t0:.2f}s]    - Total emissions: {total_emissions:.1f} kg CO₂")
+    logger.info(f"[T+{time.time()-t0:.2f}s]    - Eco score: {eco_score:.0f}/100")
     
     return GreenTripItineraryResponse(
         destination=request.destination,
