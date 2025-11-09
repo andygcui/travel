@@ -311,28 +311,28 @@ export default function Home() {
             <div className="flex items-center gap-4">
               <a
                 href="/emissions"
-                className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
               >
-                🌍 Emissions Guide
+                Emissions Guide
               </a>
               {user ? (
                 <>
                   <a
                     href="/friends"
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    👥 Friends
+                    Friends
                   </a>
                   <a
                     href="/dashboard"
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
-                    📊 Dashboard
+                    Dashboard
                   </a>
                   <span className="text-sm text-white/80">{user.email}</span>
                   <button
                     onClick={handleSignOut}
-                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:bg-[#eaf6ee] hover:text-[#3cb371]"
                   >
                     Sign Out
                   </button>
@@ -356,7 +356,7 @@ export default function Home() {
           <div className="absolute inset-0 bg-black/50" />
           <div className="mx-auto max-w-4xl text-center relative z-10">
             <div className="hero-text space-y-6">
-              <div className="reveal mb-4 text-5xl">🌍</div>
+              {/* Removed emoji for cleaner look */}
               <h1 className="reveal text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
                 Smarter Trips. Smaller Footprints.
               </h1>
@@ -573,7 +573,7 @@ export default function Home() {
             {/* Icon Cards */}
             <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">🌍</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Eco Optimization
                 </h3>
@@ -583,7 +583,7 @@ export default function Home() {
                 </p>
               </div>
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">💸</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Value Transparency
                 </h3>
@@ -593,7 +593,7 @@ export default function Home() {
                 </p>
               </div>
               <div className="mission-card group rounded-2xl border border-green-100 bg-white p-8 text-center shadow-sm transition hover:shadow-lg">
-                <div className="mb-4 text-5xl">✈️</div>
+                {/* Removed emoji for cleaner look */}
                 <h3 className="mb-2 text-xl font-semibold text-[#0f3d2e]">
                   Personalized Planning
                 </h3>
