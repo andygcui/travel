@@ -296,8 +296,6 @@ export default function Results() {
   const [exploreReviewStates, setExploreReviewStates] = useState<
     Record<string, { open: boolean; index: number }>
   >({});
-  const [tripStatus, setTripStatus] = useState<"draft" | "before" | "during" | "after">("draft");
-  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const normalizedHotelKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
   const normalizedExploreKey = useCallback((name: string) => normalizePlaceName(name) || name, []);
@@ -408,13 +406,6 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
-        // Load trip status if trip is saved
-        if (savedTripId || (itinerary as any)?.trip_id || (itinerary as any)?.id) {
-          const tripId = savedTripId || (itinerary as any)?.trip_id || (itinerary as any)?.id;
-          if (tripId) {
-            loadTripStatus(tripId, session.user.id);
-          }
-        }
       }
     });
 
@@ -422,96 +413,9 @@ export default function Results() {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadFriends(session.user.id);
-        // Load trip status if trip is saved
-        if (savedTripId) {
-          loadTripStatus(savedTripId, session.user.id);
-        }
       }
     });
   }, [router]);
-
-  const loadTripStatus = async (tripId: string, userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("saved_trips")
-        .select("trip_status")
-        .eq("id", tripId)
-        .eq("user_id", userId)
-        .single();
-      
-      if (!error && data) {
-        setTripStatus(data.trip_status || "draft");
-      }
-    } catch (err) {
-      console.error("Error loading trip status:", err);
-    }
-  };
-
-  const handleUpdateTripStatus = async (newStatus: "draft" | "before" | "during" | "after") => {
-    if (!user || !savedTripId) {
-      alert("Please save the trip first before updating status");
-      return;
-    }
-
-    // For 'during' and 'after', require flight selection
-    if (newStatus !== "before" && newStatus !== "draft" && !confirmedCabinId) {
-      alert("Please select a flight option before marking trip as 'during' or 'after'");
-      return;
-    }
-
-    setUpdatingStatus(true);
-    try {
-      let carbonEmissions: number | null = null;
-      let carbonCredits: number | null = null;
-      let selectedFlightData: any = null;
-
-      // Calculate carbon data if flight is selected
-      if (confirmedCabinData) {
-        carbonEmissions = confirmedCabinData.cabin.emissionsKg || null;
-        
-        // Calculate carbon credits (difference from max emission in the group)
-        if (confirmedCabinData.cabin.emissionsKg !== null && confirmedCabinData.cabin.emissionsKg !== undefined) {
-          const maxEmission = confirmedCabinData.maxEmission;
-          if (maxEmission > 0 && confirmedCabinData.cabin.cabin.toLowerCase() !== "first") {
-            carbonCredits = Math.max(0, maxEmission - confirmedCabinData.cabin.emissionsKg);
-          }
-        }
-
-        selectedFlightData = {
-          cabin: confirmedCabinData.cabin,
-          group: confirmedCabinData.group,
-        };
-      }
-
-      const response = await fetch("http://localhost:8000/trips/status", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          trip_id: savedTripId,
-          user_id: user.id,
-          status: newStatus,
-          selected_flight_id: confirmedCabinId || null,
-          selected_flight_data: selectedFlightData,
-          carbon_emissions_kg: carbonEmissions,
-          carbon_credits: carbonCredits,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Failed to update trip status" }));
-        throw new Error(errorData.detail || "Failed to update trip status");
-      }
-
-      setTripStatus(newStatus);
-      if (newStatus === "after") {
-        alert("Trip completed! Carbon emissions and credits have been recorded.");
-      }
-    } catch (err: any) {
-      alert(`Failed to update trip status: ${err.message}`);
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
 
   const loadFriends = async (userId: string) => {
     if (!userId) {
@@ -800,7 +704,6 @@ export default function Results() {
           budget: itinerary.budget,
           mode: itinerary.mode,
           itinerary_data: itinerary,
-          trip_status: "draft", // New trips start as drafts
         })
         .select()
         .single();
@@ -1227,6 +1130,31 @@ export default function Results() {
 
   const flightsToRender = sortedFlightGroups;
 
+  const expandedFlight = useMemo(() => {
+    if (!expandedFlightId) return null;
+    return sortedFlightGroups.find((flight) => flight.groupId === expandedFlightId) ?? null;
+  }, [expandedFlightId, sortedFlightGroups]);
+
+  const expandedFlightMaxEmission = useMemo(() => {
+    if (!expandedFlight) return 0;
+    return (
+      expandedFlight.cabins.reduce((max, cabin) => {
+        if (cabin.emissionsKg === undefined || cabin.emissionsKg === null) return max;
+        return Math.max(max, cabin.emissionsKg);
+      }, 0) || 0
+    );
+  }, [expandedFlight]);
+
+  useEffect(() => {
+    if (!expandedFlight || expandedFlight.cabins.length === 0) return;
+    setSelectedCabinId((prev) => {
+      if (prev && expandedFlight.cabins.some((cabin) => cabin.id === prev)) {
+        return prev;
+      }
+      return expandedFlight.cabins[0].id;
+    });
+  }, [expandedFlight]);
+
   const findCabinById = useMemo(() => {
     const map = new Map<string, { cabin: FlightCabinOption; group: FlightGroup; maxEmission: number }>();
     groupedFlights.forEach((group) => {
@@ -1340,28 +1268,6 @@ export default function Results() {
             <div className="flex items-center gap-3">
               {user && (
                 <>
-                  {/* Trip Status Progress Tags */}
-                  {savedTripId && (
-                    <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white/60 px-3 py-1.5">
-                      {tripStatus === "draft" ? (
-                        <span className="text-xs font-medium text-gray-500">📝 Draft</span>
-                      ) : (
-                        <>
-                          <span className={`text-xs font-medium ${tripStatus === "before" ? "text-emerald-700" : "text-emerald-500"}`}>
-                            {tripStatus === "before" ? "●" : "✓"} Before
-                          </span>
-                          <span className="text-emerald-300">|</span>
-                          <span className={`text-xs font-medium ${tripStatus === "during" ? "text-emerald-700" : tripStatus === "after" ? "text-emerald-500" : "text-gray-400"}`}>
-                            {tripStatus === "during" ? "●" : tripStatus === "after" ? "✓" : "○"} During
-                          </span>
-                          <span className="text-emerald-300">|</span>
-                          <span className={`text-xs font-medium ${tripStatus === "after" ? "text-emerald-700" : "text-gray-400"}`}>
-                            {tripStatus === "after" ? "●" : "○"} After
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  )}
                   <button
                     onClick={regenerateItinerary}
                     disabled={checkingPreferences}
@@ -1412,52 +1318,6 @@ export default function Results() {
                   >
                     {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
                   </button>
-                  {/* Going Button */}
-                  {savedTripId && (
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          if (tripStatus === "draft") {
-                            handleUpdateTripStatus("before");
-                          } else if (tripStatus === "before") {
-                            handleUpdateTripStatus("during");
-                          } else if (tripStatus === "during") {
-                            handleUpdateTripStatus("after");
-                          } else {
-                            // Already after, show message
-                            alert("Trip is already completed!");
-                          }
-                        }}
-                        disabled={updatingStatus || tripStatus === "after"}
-                        className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                          tripStatus === "after"
-                            ? "bg-emerald-600 text-white"
-                            : tripStatus === "draft"
-                            ? "border border-gray-300 bg-white/60 text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
-                            : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
-                        }`}
-                        title={
-                          tripStatus === "draft"
-                            ? "Mark as going (planning to go)"
-                            : tripStatus === "before"
-                            ? "Mark as during trip (requires flight selection)"
-                            : tripStatus === "during"
-                            ? "Mark trip as completed"
-                            : "Trip completed"
-                        }
-                      >
-                        {updatingStatus
-                          ? "Updating..."
-                          : tripStatus === "draft"
-                          ? "✈️ Mark as Going"
-                          : tripStatus === "before"
-                          ? "✈️ Going"
-                          : tripStatus === "during"
-                          ? "✓ Complete Trip"
-                          : "✓ Completed"}
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -1573,7 +1433,7 @@ export default function Results() {
             <h2 className="text-2xl font-bold text-[#0b3d2e]">Flight Options</h2>
           </div>
 
-          <div className="relative">
+          <div className="relative md:flex md:items-start md:gap-6">
             {sortedFlightGroups.length > 3 && (
               <>
                 <button
@@ -1626,12 +1486,12 @@ export default function Results() {
         return (
                   <div
                     key={flight.groupId}
-                    className={`flight-card flex flex-shrink-0 flex-col overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-md transition-all duration-300 ${
+                    className={`flight-card flex w-[320px] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-emerald-100 bg-white p-6 shadow-md transition-all duration-300 ${
                       isExpanded
-                        ? "w-[420px] p-6 opacity-100 shadow-lg"
+                        ? "ring-2 ring-emerald-200 shadow-lg"
                         : expandedFlightId
                           ? "pointer-events-none w-0 -translate-x-4 scale-95 p-0 opacity-0"
-                          : "w-[320px] p-6 opacity-100 hover:shadow-lg"
+                          : "hover:shadow-lg"
                     }`}
                   >
             <button
@@ -1670,17 +1530,26 @@ export default function Results() {
                 </div>
               </div>
             </button>
+                  </div>
+        );
+      })
+    ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
+        Flight details coming soon
+      </div>
+    )}
+            </div>
 
-            {isExpanded && (
-              <div className="mt-4 rounded-xl border border-emerald-100 bg-white/95 p-4">
-                <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
+            {expandedFlight && (
+              <div className="mt-6 w-full max-w-md shrink-0 rounded-2xl border border-emerald-100 bg-white p-5 shadow-md md:mt-0">
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
                   Choose your cabin
                 </h4>
-                <div className="flex flex-nowrap gap-3 overflow-x-auto pb-2">
-                  {flight.cabins.map((cabin) => {
+                <div className="flex flex-col gap-3">
+                  {expandedFlight.cabins.map((cabin) => {
                     const carbonCredits =
                       cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
-                        ? Math.max(0, maxEmission - cabin.emissionsKg)
+                        ? Math.max(0, expandedFlightMaxEmission - cabin.emissionsKg)
                         : null;
                     const isSelected = selectedCabinId === cabin.id;
                     const showCredits =
@@ -1697,13 +1566,13 @@ export default function Results() {
                         key={cabin.id}
                         type="button"
                         onClick={() => setSelectedCabinId(cabin.id)}
-                        className={`flex min-w-[260px] max-w-[320px] items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm shadow-sm transition ${
+                        className={`flex w-full items-center gap-3 rounded-lg border px-4 py-2.5 text-left text-sm shadow-sm transition ${
                           isSelected
                             ? "border-gray-400 bg-gray-100 ring-2 ring-gray-200"
                             : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
                         }`}
                       >
-                        <div className="flex min-w-[180px] flex-1 flex-col gap-1">
+                        <div className="flex flex-1 flex-col gap-1">
                           <p className="text-sm font-semibold text-gray-900">
                             {formatCabinLabel(cabin.cabin)}
                           </p>
@@ -1718,16 +1587,16 @@ export default function Results() {
                             )}
                           </p>
                         </div>
-                        <div className="flex min-w-[160px] flex-1 items-center justify-center">
+                        <div className="flex flex-1 justify-center">
                           {showCredits ? (
-                            <span className="text-base font-semibold text-emerald-700">
+                            <span className="text-sm font-semibold text-emerald-700">
                               +{carbonCredits!.toFixed(1)} credits
                             </span>
                           ) : (
-                            <span className="text-sm text-gray-500">No credits</span>
+                            <span className="text-xs text-gray-500">No credits</span>
                           )}
                         </div>
-                        <div className="flex flex-col items-end">
+                        <div className="text-right">
                           <p className="font-semibold text-gray-900">
                             {new Intl.NumberFormat("en-US", {
                               style: "currency",
@@ -1735,15 +1604,15 @@ export default function Results() {
                             }).format(cabin.price)}
                           </p>
                           {isSelected && (
-                            <span className="text-xs font-medium text-emerald-600">Selected</span>
+                            <span className="text-[11px] font-medium text-emerald-600">Selected</span>
                           )}
-          </div>
+                        </div>
                       </button>
                     );
                   })}
                 </div>
                 {(() => {
-                  const selectionInGroup = flight.cabins.some((cabin) => cabin.id === selectedCabinId);
+                  const selectionInGroup = expandedFlight.cabins.some((cabin) => cabin.id === selectedCabinId);
                   if (!selectionInGroup) return null;
                   const selectionConfirmed =
                     selectedCabinId !== null && selectedCabinId === confirmedCabinId;
@@ -1770,15 +1639,6 @@ export default function Results() {
                 })()}
               </div>
             )}
-                  </div>
-        );
-      })
-    ) : (
-              <div className="rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
-        Flight details coming soon
-      </div>
-    )}
-            </div>
           </div>
         </section>
 
