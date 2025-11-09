@@ -261,6 +261,8 @@ export default function Results() {
   const [showChat, setShowChat] = useState(false);
   const [flightSort, setFlightSort] = useState<"price" | "emissions">("emissions");
   const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
+  const [selectedCabinId, setSelectedCabinId] = useState<string | null>(null);
+  const [confirmedCabinId, setConfirmedCabinId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
@@ -293,6 +295,12 @@ export default function Results() {
       setUser(session?.user ?? null);
     });
   }, [router]);
+
+  useEffect(() => {
+    setSelectedCabinId(null);
+    setConfirmedCabinId(null);
+    setExpandedFlightId(null);
+  }, [itinerary?.destination, itinerary?.start_date, itinerary?.end_date]);
 
   const handleSaveTrip = async () => {
     if (!user || !itinerary) {
@@ -568,6 +576,18 @@ export default function Results() {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   };
 
+  const formatDurationLabel = (departure?: string, arrival?: string) => {
+    if (!departure || !arrival) return "";
+    const depart = new Date(departure);
+    const arrive = new Date(arrival);
+    const diffMs = arrive.getTime() - depart.getTime();
+    if (Number.isNaN(diffMs) || diffMs <= 0) return "";
+    const diffMinutes = Math.round(diffMs / 60000);
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  };
+
   // Get unique flights
   const groupedFlights = useMemo<FlightGroup[]>(() => {
     if (!itinerary?.flights) return [];
@@ -642,6 +662,30 @@ export default function Results() {
     return clone;
   }, [groupedFlights, flightSort]);
 
+  const findCabinById = useMemo(() => {
+    const map = new Map<string, { cabin: FlightCabinOption; group: FlightGroup; maxEmission: number }>();
+    groupedFlights.forEach((group) => {
+      const maxEmission = group.cabins.reduce((max, cabin) => {
+        if (cabin.emissionsKg === undefined || cabin.emissionsKg === null) return max;
+        return Math.max(max, cabin.emissionsKg);
+      }, 0);
+      group.cabins.forEach((cabin) => {
+        map.set(cabin.id, { cabin, group, maxEmission });
+      });
+    });
+    return map;
+  }, [groupedFlights]);
+
+  const selectedCabinData = useMemo(() => {
+    if (!selectedCabinId) return null;
+    return findCabinById.get(selectedCabinId) || null;
+  }, [selectedCabinId, findCabinById]);
+
+  const confirmedCabinData = useMemo(() => {
+    if (!confirmedCabinId) return null;
+    return findCabinById.get(confirmedCabinId) || null;
+  }, [confirmedCabinId, findCabinById]);
+
   if (!itinerary) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-emerald-50 text-emerald-900">
@@ -673,6 +717,30 @@ export default function Results() {
 
   const goPrevDay = () => setCurrentDayIndex((prev) => Math.max(0, prev - 1));
   const goNextDay = () => setCurrentDayIndex((prev) => Math.min(itinerary.days.length - 1, prev + 1));
+
+  const baseCost = typeof itinerary.totals?.cost === "number" ? itinerary.totals.cost : 0;
+  const baseEmissions =
+    typeof itinerary.totals?.emissions_kg === "number" ? itinerary.totals.emissions_kg : 0;
+
+  const hasConfirmedFlight = Boolean(confirmedCabinData);
+  const confirmedSpend = hasConfirmedFlight
+    ? confirmedCabinData!.cabin.price ?? 0
+    : null;
+  const confirmedEmissions =
+    hasConfirmedFlight && confirmedCabinData!.cabin.emissionsKg !== undefined && confirmedCabinData!.cabin.emissionsKg !== null
+      ? confirmedCabinData!.cabin.emissionsKg
+      : null;
+
+  const rawConfirmedCredits =
+    hasConfirmedFlight &&
+    confirmedCabinData!.cabin.emissionsKg !== undefined &&
+    confirmedCabinData!.cabin.emissionsKg !== null &&
+    confirmedCabinData!.maxEmission > 0 &&
+    confirmedCabinData!.cabin.cabin.toLowerCase() !== "first"
+      ? Math.max(0, confirmedCabinData!.maxEmission - confirmedCabinData!.cabin.emissionsKg)
+      : null;
+  const confirmedCarbonCredits =
+    rawConfirmedCredits !== null && rawConfirmedCredits > 0.05 ? rawConfirmedCredits : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-emerald-50">
@@ -715,15 +783,19 @@ export default function Results() {
         </section>
 
         {/* Summary Row */}
-        <section className="mb-20 grid gap-6 md:grid-cols-3">
+        <section className="mb-12 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
             <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Total Spend</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">{currency.format(itinerary.totals.cost)}</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">
+              {hasConfirmedFlight && confirmedSpend !== null ? currency.format(confirmedSpend) : "--"}
+            </p>
             <p className="mt-2 text-sm text-emerald-600/80">Budget: {currency.format(itinerary.budget)}</p>
           </div>
           <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
             <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Estimated CO₂</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">{itinerary.totals.emissions_kg.toFixed(1)} kg</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">
+              {hasConfirmedFlight && confirmedEmissions !== null ? `${confirmedEmissions.toFixed(1)} kg` : "--"}
+            </p>
             <p className="mt-2 text-sm text-emerald-600/80">+ eco points</p>
           </div>
           <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
@@ -735,7 +807,73 @@ export default function Results() {
                 : "Dates TBD"}
             </p>
           </div>
+          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Carbon Credits</p>
+            <p className="text-4xl font-bold text-[#0b3d2e]">
+              {confirmedCarbonCredits !== null ? `+ ${confirmedCarbonCredits.toFixed(1)}` : "--"}
+            </p>
+            <p className="mt-2 text-sm text-emerald-600/80">Saved vs highest-impact cabin</p>
+          </div>
         </section>
+
+        {confirmedCabinData && (
+          <div className="mb-20 rounded-2xl border border-white/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Selected Flight</p>
+                <p className="mt-1 text-xl font-semibold text-[#0b3d2e]">
+                  {confirmedCabinData.group.origin} → {confirmedCabinData.group.destination}
+                </p>
+                <p className="text-sm text-emerald-600/80">
+                  {formatDateTime(confirmedCabinData.group.departure)} —{" "}
+                  {formatDateTime(confirmedCabinData.group.arrival)} ·{" "}
+                  {formatDurationLabel(confirmedCabinData.group.departure, confirmedCabinData.group.arrival)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Cabin</p>
+                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+                  {formatCabinLabel(confirmedCabinData.cabin.cabin)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
+                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Flight Cost</p>
+                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+                  {currency.format(confirmedCabinData.cabin.price)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
+                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Flight Emissions</p>
+                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+                  {confirmedCabinData.cabin.emissionsKg !== undefined && confirmedCabinData.cabin.emissionsKg !== null
+                    ? `${confirmedCabinData.cabin.emissionsKg.toFixed(1)} kg`
+                    : "N/A"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
+                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Carbon Credits</p>
+                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+                  {confirmedCarbonCredits !== null ? `+ ${confirmedCarbonCredits.toFixed(1)}` : "--"}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmedCabinId(null);
+                  setSelectedCabinId(null);
+                  setExpandedFlightId(null);
+                }}
+                className="rounded-full border border-emerald-200 bg-white px-5 py-2 text-sm font-medium text-emerald-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
+              >
+                Remove flight
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Flight Options */}
         <section className="flight-section mb-20">
@@ -831,34 +969,87 @@ export default function Results() {
                       cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
                         ? Math.max(0, maxEmission - cabin.emissionsKg)
                         : null;
+                    const isSelected = selectedCabinId === cabin.id;
+                    const showCredits =
+                      cabin.cabin.toLowerCase() !== "first" &&
+                      carbonCredits !== null &&
+                      carbonCredits > 0.05;
                     return (
-                      <div
+                      <button
                         key={cabin.id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-white/90 px-4 py-3 text-sm text-emerald-800 shadow-sm"
+                        type="button"
+                        onClick={() => setSelectedCabinId(cabin.id)}
+                        className={`flex w-full flex-wrap items-center gap-4 rounded-xl border px-4 py-3 text-left text-sm shadow-sm transition ${
+                          isSelected
+                            ? "border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200"
+                            : "border-emerald-100 bg-white/90 hover:border-emerald-200 hover:bg-emerald-50/40"
+                        }`}
                       >
-                        <div>
-                          <p className="font-semibold text-[#0b3d2e]">{formatCabinLabel(cabin.cabin)}</p>
+                        <div className="flex-1">
+                          <p className="font-semibold text-[#0b3d2e]">
+                            {formatCabinLabel(cabin.cabin)}
+                          </p>
                           <p className="text-xs text-emerald-600/80">
                             {cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
                               ? `${cabin.emissionsKg.toFixed(1)} kg CO₂`
                               : "Emission estimate unavailable"}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="flex flex-col items-start justify-center text-emerald-700">
+                          {showCredits ? (
+                            <>
+                              <span className="text-lg font-semibold text-emerald-600">
+                                + {carbonCredits!.toFixed(1)}
+                              </span>
+                              <span className="text-[10px] uppercase tracking-[0.3em] text-emerald-500">
+                                Carbon Credits
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-emerald-500/60">No credits</span>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end">
                           <p className="font-semibold text-[#0b3d2e]">
                             {new Intl.NumberFormat("en-US", {
                               style: "currency",
                               currency: cabin.currency ?? "USD",
                             }).format(cabin.price)}
                           </p>
-                          {carbonCredits !== null && (
-                            <p className="text-xs text-emerald-600/80">Carbon credits: {carbonCredits.toFixed(1)}</p>
+                          {isSelected && (
+                            <span className="text-xs font-medium text-emerald-600">Selected</span>
                           )}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
+                {(() => {
+                  const selectionInGroup = flight.cabins.some((cabin) => cabin.id === selectedCabinId);
+                  if (!selectionInGroup) return null;
+                  const selectionConfirmed =
+                    selectedCabinId !== null && selectedCabinId === confirmedCabinId;
+                  return (
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedCabinId) {
+                            setConfirmedCabinId(selectedCabinId);
+                          }
+                        }}
+                        disabled={!selectedCabinId || selectionConfirmed}
+                        className={`rounded-full px-6 py-2 text-sm font-semibold shadow-md transition ${
+                          selectionConfirmed
+                            ? "cursor-default bg-emerald-200 text-emerald-800"
+                            : "bg-emerald-600 text-white hover:bg-emerald-500"
+                        }`}
+                      >
+                        {selectionConfirmed ? "Flight selected" : "Select flight"}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
