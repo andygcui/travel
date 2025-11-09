@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import { supabase } from "../lib/supabase";
@@ -10,39 +10,18 @@ export default function Friends() {
   const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [sentRequests, setSentRequests] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendEmail, setFriendEmail] = useState("");
   const [friendUsername, setFriendUsername] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
   const [searchBy, setSearchBy] = useState<"email" | "username">("email");
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [showSentModal, setShowSentModal] = useState(false);
+  const hasLoadedRef = useRef(false);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        setLoading(false);
-        // Load friends after user is set
-        loadFriends(session.user.id);
-        loadPendingRequests(session.user.id);
-      } else {
-        setLoading(false);
-        router.push("/");
-      }
-    });
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        loadFriends(session.user.id);
-        loadPendingRequests(session.user.id);
-      } else {
-        router.push("/");
-      }
-    });
-  }, [router]);
-
-  const loadFriends = async (userId: string) => {
+  const loadFriends = useCallback(async (userId: string) => {
     if (!userId) return;
     setLoadingFriends(true);
     try {
@@ -56,20 +35,93 @@ export default function Friends() {
     } finally {
       setLoadingFriends(false);
     }
-  };
+  }, []);
 
-  const loadPendingRequests = async (userId: string) => {
+  const loadPendingRequests = useCallback(async (userId: string) => {
     if (!userId) return;
     try {
+      console.log("Loading pending requests for user:", userId);
       const response = await fetch(`http://localhost:8000/friends/pending?user_id=${userId}`);
+      console.log("Pending requests response status:", response.status);
       if (response.ok) {
         const data = await response.json();
+        console.log("Pending requests data:", data);
         setPendingRequests(data.pending_requests || []);
+      } else {
+        const errorText = await response.text();
+        console.error("Error loading pending requests:", response.status, errorText);
       }
     } catch (err) {
       console.error("Error loading pending requests:", err);
     }
-  };
+  }, []);
+
+  const loadSentRequests = useCallback(async (userId: string) => {
+    if (!userId) return;
+    try {
+      console.log("Loading sent requests for user:", userId);
+      const response = await fetch(`http://localhost:8000/friends/sent?user_id=${userId}`);
+      console.log("Sent requests response status:", response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Sent requests data:", data);
+        setSentRequests(data.sent_requests || []);
+      } else {
+        const errorText = await response.text();
+        console.error("Error loading sent requests:", response.status, errorText);
+      }
+    } catch (err) {
+      console.error("Error loading sent requests:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    let subscription: any = null;
+
+    const loadData = async (userId: string) => {
+      if (!mounted) return;
+      console.log("Loading friends data for user:", userId);
+      await Promise.all([
+        loadFriends(userId),
+        loadPendingRequests(userId),
+        loadSentRequests(userId),
+      ]);
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUser(session.user);
+        setLoading(false);
+        // Load friends after user is set
+        loadData(session.user.id);
+      } else {
+        setLoading(false);
+        router.push("/");
+      }
+    });
+
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUser(session.user);
+        loadData(session.user.id);
+      } else {
+        router.push("/");
+      }
+    });
+    subscription = authSubscription;
+
+    return () => {
+      mounted = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleAddFriend = async () => {
     if (!user) return;
@@ -80,6 +132,12 @@ export default function Friends() {
 
     setAddingFriend(true);
     try {
+      console.log("Adding friend with:", {
+        user_id: user.id,
+        friend_email: friendEmail.trim() || null,
+        friend_username: friendUsername.trim() || null,
+      });
+
       const response = await fetch("http://localhost:8000/friends/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,17 +148,28 @@ export default function Friends() {
         }),
       });
 
+      console.log("Add friend response status:", response.status);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Failed to add friend" }));
+        console.error("Add friend error:", errorData);
         throw new Error(errorData.detail || "Failed to add friend");
       }
+
+      const result = await response.json();
+      console.log("Add friend success:", result);
 
       setFriendEmail("");
       setFriendUsername("");
       setShowAddFriend(false);
       alert("Friend request sent!");
+      // Reload all friend data after adding
       if (user) {
-        loadPendingRequests(user.id);
+        await Promise.all([
+          loadFriends(user.id),
+          loadPendingRequests(user.id),
+          loadSentRequests(user.id),
+        ]);
       }
     } catch (err: any) {
       console.error("Error adding friend:", err);
@@ -129,6 +198,7 @@ export default function Friends() {
       if (user) {
         loadFriends(user.id);
         loadPendingRequests(user.id);
+        loadSentRequests(user.id);
       }
     } catch (err) {
       console.error("Error accepting friend request:", err);
@@ -157,6 +227,7 @@ export default function Friends() {
       if (user) {
         loadFriends(user.id);
         loadPendingRequests(user.id);
+        loadSentRequests(user.id);
       }
     } catch (err) {
       console.error("Error removing friend:", err);
@@ -220,75 +291,69 @@ export default function Friends() {
             <p className="mt-2 text-emerald-700">Manage your friends and friend requests</p>
           </div>
 
-          {/* Add Friend Button */}
-          <div className="mb-8">
-            <button
-              onClick={() => setShowAddFriend(true)}
-              className="rounded-lg border border-emerald-200 bg-white px-6 py-3 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
-            >
-              + Add Friend
-            </button>
-          </div>
-
-          {/* Pending Friend Requests */}
-          {pendingRequests.length > 0 && (
-            <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-xl font-semibold text-emerald-900">Pending Friend Requests</h2>
-              <div className="space-y-3">
-                {pendingRequests.map((request) => (
-                  <div
-                    key={request.friendship_id}
-                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-4"
-                  >
-                    <div>
-                      <p className="font-medium text-emerald-900">{request.email}</p>
-                      <p className="text-xs text-emerald-600">
-                        Sent {new Date(request.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleAcceptRequest(request.friendship_id)}
-                        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => handleRemoveFriend(request.requester_id)}
-                        className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                      >
-                        Decline
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Header with Action Buttons */}
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-emerald-900">Your Friends</h2>
+            <div className="flex items-center gap-2">
+              {/* Friend Requests Button */}
+              <button
+                onClick={() => setShowPendingModal(true)}
+                className="relative rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                Requests
+                {pendingRequests.length > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                    {pendingRequests.length}
+                  </span>
+                )}
+              </button>
+              {/* Sent Requests Button */}
+              <button
+                onClick={() => setShowSentModal(true)}
+                className="relative rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                Sent
+                {sentRequests.length > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-semibold text-white">
+                    {sentRequests.length}
+                  </span>
+                )}
+              </button>
+              {/* Add Friend Button */}
+              <button
+                onClick={() => setShowAddFriend(true)}
+                className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                + Add
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Friends List */}
           <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Your Friends</h2>
             {loadingFriends ? (
               <p className="text-emerald-700">Loading friends...</p>
             ) : friends.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {friends.map((friend) => (
                   <div
                     key={friend.friendship_id}
-                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-4"
+                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
                   >
-                    <div>
-                      <p className="font-medium text-emerald-900">{friend.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-emerald-900 truncate">
+                        @{friend.username || friend.email || "unknown"}
+                      </p>
                       <p className="text-xs text-emerald-600">
-                        Friends since {new Date(friend.created_at).toLocaleDateString()}
+                        Since {new Date(friend.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemoveFriend(friend.friend_id)}
-                      className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                      className="ml-2 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 flex-shrink-0"
+                      title="Remove friend"
                     >
-                      Remove
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -301,6 +366,144 @@ export default function Friends() {
           </div>
         </main>
       </div>
+
+      {/* Friend Requests Modal */}
+      {showPendingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-emerald-100 p-4">
+              <h2 className="text-xl font-bold text-emerald-900">Friend Requests</h2>
+              <button
+                onClick={() => setShowPendingModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {pendingRequests.length > 0 ? (
+                <div className="space-y-2">
+                  {pendingRequests.map((request) => (
+                    <div
+                      key={request.friendship_id}
+                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-emerald-900">
+                          @{request.username || request.email || "unknown"}
+                        </p>
+                        <p className="text-xs text-emerald-600">
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            handleAcceptRequest(request.friendship_id);
+                            if (pendingRequests.length === 1) {
+                              setShowPendingModal(false);
+                            }
+                          }}
+                          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-600"
+                          title="Accept"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleRemoveFriend(request.requester_id);
+                            if (pendingRequests.length === 1) {
+                              setShowPendingModal(false);
+                            }
+                          }}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                          title="Decline"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-emerald-700 italic py-8">
+                  No pending friend requests. When someone sends you a friend request, it will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sent Requests Modal */}
+      {showSentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-emerald-100 p-4">
+              <h2 className="text-xl font-bold text-emerald-900">Sent Requests</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (user) {
+                      console.log("Manually refreshing sent requests...");
+                      loadSentRequests(user.id);
+                    }
+                  }}
+                  className="rounded-lg border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  🔄
+                </button>
+                <button
+                  onClick={() => setShowSentModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {sentRequests.length > 0 ? (
+                <div className="space-y-2">
+                  {sentRequests.map((request) => (
+                    <div
+                      key={request.friendship_id}
+                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-emerald-900">
+                          @{request.username || request.email || "unknown"}
+                        </p>
+                        <p className="text-xs text-emerald-600">
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-emerald-600 italic">Pending</span>
+                        <button
+                          onClick={() => {
+                            handleRemoveFriend(request.recipient_id);
+                            if (sentRequests.length === 1) {
+                              setShowSentModal(false);
+                            }
+                          }}
+                          className="rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-emerald-700 italic py-8">
+                  No sent friend requests. When you send a friend request, it will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Friend Modal */}
       {showAddFriend && (
