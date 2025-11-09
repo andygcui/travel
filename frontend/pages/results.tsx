@@ -1856,23 +1856,27 @@ export default function Results() {
               return (
                 <div
                   key={slot}
-                  className="scroll-fade bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm"
+                  className="scroll-fade bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm flex h-full flex-col"
                 >
                   <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
                     {slot}
                   </div>
                   <h4 className="mb-2 text-lg font-semibold text-[#0b3d2e]">{poi?.name || extractPlaceNames(text)[0] || `${slot} Activity`}</h4>
                   <p className="mb-4 text-sm text-emerald-800/80 leading-relaxed">{text}</p>
-                  {poi?.photo_urls && poi.photo_urls[0] && (
-                    <img
-                      src={poi.photo_urls[0]}
-                      alt={poi.name}
-                      className="mb-4 h-48 w-full rounded-xl object-cover"
-                    />
-                  )}
-                  {poi?.rating && (
-                    <p className="text-sm text-emerald-600/80">⭐ {typeof poi.rating === 'number' ? poi.rating.toFixed(1) : poi.rating} / 5.0</p>
-                  )}
+                  <div className="mt-auto flex flex-col gap-3">
+                    {poi?.photo_urls && poi.photo_urls[0] && (
+                      <img
+                        src={poi.photo_urls[0]}
+                        alt={poi.name}
+                        className="h-48 w-full rounded-xl object-cover"
+                      />
+                    )}
+                    {poi?.rating && (
+                      <p className="text-sm text-emerald-600/80">
+                        ⭐ {typeof poi.rating === "number" ? poi.rating.toFixed(1) : poi.rating} / 5.0
+                      </p>
+                    )}
+                  </div>
         </div>
               );
             })}
