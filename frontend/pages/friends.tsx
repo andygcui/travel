@@ -19,6 +19,8 @@ export default function Friends() {
   const [searchBy, setSearchBy] = useState<"email" | "username">("email");
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [showSentModal, setShowSentModal] = useState(false);
+  const [carbonRanking, setCarbonRanking] = useState<any[]>([]);
+  const [loadingCarbonRanking, setLoadingCarbonRanking] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const loadFriends = useCallback(async (userId: string) => {
@@ -75,6 +77,22 @@ export default function Friends() {
     }
   }, []);
 
+  const loadCarbonRanking = useCallback(async (userId: string) => {
+    if (!userId) return;
+    setLoadingCarbonRanking(true);
+    try {
+      const response = await fetch(`http://localhost:8000/trips/carbon-ranking?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCarbonRanking(data.ranking || []);
+      }
+    } catch (err) {
+      console.error("Error loading carbon ranking:", err);
+    } finally {
+      setLoadingCarbonRanking(false);
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     let subscription: any = null;
@@ -86,6 +104,7 @@ export default function Friends() {
         loadFriends(userId),
         loadPendingRequests(userId),
         loadSentRequests(userId),
+        loadCarbonRanking(userId),
       ]);
     };
 
@@ -328,6 +347,123 @@ export default function Friends() {
               </button>
             </div>
           </div>
+
+          {/* Carbon Credits Leaderboard */}
+          {carbonRanking.length > 0 && (
+            <div className="mb-8 rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-emerald-50 p-6 shadow-lg">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="mb-1 text-2xl font-bold text-emerald-900">🏆 Carbon Credits Leaderboard</h2>
+                  <p className="text-sm text-emerald-600">Compete with friends to earn the most carbon credits!</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                {carbonRanking.map((entry, idx) => {
+                  const isCurrentUser = entry.user_id === user?.id;
+                  const isTopThree = entry.rank <= 3;
+                  
+                  // Medal emojis for top 3
+                  const medalEmoji = entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : "";
+                  
+                  return (
+                    <div
+                      key={entry.user_id}
+                      className={`relative flex items-center justify-between rounded-xl p-4 transition-all ${
+                        isCurrentUser
+                          ? "bg-gradient-to-r from-emerald-100 to-emerald-50 border-2 border-emerald-400 shadow-md"
+                          : isTopThree
+                          ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 shadow-sm"
+                          : "bg-white border border-emerald-200 shadow-sm hover:shadow-md"
+                      }`}
+                    >
+                      {/* Rank Badge */}
+                      <div className="flex items-center gap-4">
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-full font-bold ${
+                          entry.rank === 1
+                            ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white text-lg shadow-lg"
+                            : entry.rank === 2
+                            ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
+                            : entry.rank === 3
+                            ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}>
+                          {medalEmoji || `#${entry.rank}`}
+                        </div>
+                        
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-semibold ${
+                              isCurrentUser ? "text-emerald-900" : "text-gray-900"
+                            }`}>
+                              @{entry.username}
+                            </span>
+                            {isCurrentUser && (
+                              <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-medium text-white">
+                                You
+                              </span>
+                            )}
+                            {isTopThree && !isCurrentUser && (
+                              <span className="text-lg">{medalEmoji}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-emerald-600">
+                            {entry.trips_count} {entry.trips_count === 1 ? "trip" : "trips"} completed
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Credits Display */}
+                      <div className="text-right">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-emerald-700">
+                            {entry.total_credits.toFixed(1)}
+                          </span>
+                          <span className="text-sm font-medium text-emerald-600">credits</span>
+                        </div>
+                        {entry.total_emissions_kg > 0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {entry.total_emissions_kg.toFixed(1)} kg CO₂ saved
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {carbonRanking.length === 1 && (
+                <div className="mt-4 rounded-lg bg-emerald-100 p-4 text-center">
+                  <p className="text-sm text-emerald-700">
+                    🌱 You're the only one on the leaderboard! Add friends to compete!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {loadingCarbonRanking && (
+            <div className="mb-8 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-sm">
+              <div className="text-center py-8">
+                <p className="text-emerald-700">Loading leaderboard...</p>
+              </div>
+            </div>
+          )}
+          
+          {!loadingCarbonRanking && carbonRanking.length === 0 && (
+            <div className="mb-8 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-sm">
+              <div className="text-center py-8">
+                <div className="mb-4 text-6xl">🏆</div>
+                <h2 className="mb-2 text-xl font-semibold text-emerald-900">Carbon Credits Leaderboard</h2>
+                <p className="mb-4 text-sm text-emerald-600">
+                  Complete trips to earn carbon credits and compete with friends!
+                </p>
+                <p className="text-xs text-gray-500">
+                  Complete at least one trip to appear on the leaderboard.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Friends List */}
           <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">

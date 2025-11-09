@@ -1339,7 +1339,11 @@ async def update_trip_status(request: UpdateTripStatusRequest):
             raise HTTPException(status_code=404, detail="Trip not found")
         
         trip_owner = trip_result.data[0]["user_id"]
-        if trip_owner != request.user_id:
+        logger.info(f"Trip owner: {trip_owner}, Request user_id: {request.user_id}, Match: {trip_owner == request.user_id}")
+        
+        # Convert both to strings for comparison to handle UUID vs string issues
+        if str(trip_owner) != str(request.user_id):
+            logger.warning(f"Permission denied: trip_owner={trip_owner} (type: {type(trip_owner)}), request.user_id={request.user_id} (type: {type(request.user_id)})")
             raise HTTPException(status_code=403, detail="You don't have permission to update this trip")
         
         # For 'during' and 'after' status, require flight selection
@@ -1431,42 +1435,63 @@ async def get_carbon_ranking(user_id: str):
         
         # Get carbon stats for all friends
         ranking = []
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
         for friend_id in friend_ids:
             # Get user info
-            user_prefs = supabase.table("user_preferences").select("username, email").eq(
-                "user_id", friend_id
-            ).execute()
+            username = f"user_{friend_id[:8]}"  # Default fallback
             
-            username = None
-            if user_prefs.data and len(user_prefs.data) > 0:
-                username = user_prefs.data[0].get("username")
-                if not username:
-                    # Use email as fallback
-                    email = user_prefs.data[0].get("email", "")
-                    username = email.split("@")[0] if email else f"user_{friend_id[:8]}"
-            else:
-                username = f"user_{friend_id[:8]}"
+            # Try to get username from user_preferences
+            try:
+                user_prefs = supabase.table("user_preferences").select("username").eq(
+                    "user_id", friend_id
+                ).execute()
+                
+                if user_prefs.data and len(user_prefs.data) > 0:
+                    username = user_prefs.data[0].get("username", "")
+                    if not username:
+                        # If no username, try to get email from auth API
+                        if supabase_url and service_role_key:
+                            admin_url = f"{supabase_url}/auth/v1/admin/users"
+                            headers = {
+                                "apikey": service_role_key,
+                                "Authorization": f"Bearer {service_role_key}",
+                            }
+                            try:
+                                response = requests.get(f"{admin_url}/{friend_id}", headers=headers)
+                                if response.status_code == 200:
+                                    user_data = response.json()
+                                    email = user_data.get("email", "")
+                                    if email:
+                                        username = email.split("@")[0]
+                            except Exception as e:
+                                logger.warning(f"Error fetching email for user {friend_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Error fetching username for user {friend_id}: {e}")
             
-            # Get carbon stats
+            # Get carbon stats - only count completed trips (status = 'after')
             trips_result = supabase.table("saved_trips").select(
                 "id, carbon_emissions_kg, carbon_credits"
             ).eq("user_id", friend_id).eq("trip_status", "after").execute()
             
             trips = trips_result.data or []
+            # Calculate totals - default to 0 if no trips
             total_credits = sum(float(t.get("carbon_credits") or 0) for t in trips)
             total_emissions = sum(float(t.get("carbon_emissions_kg") or 0) for t in trips)
             trips_count = len(trips)
             
+            # Include all users in ranking, even with 0 credits
             ranking.append({
                 "user_id": friend_id,
-                "username": username,
+                "username": username or f"user_{friend_id[:8]}",
                 "trips_count": trips_count,
                 "total_credits": round(total_credits, 2),
                 "total_emissions_kg": round(total_emissions, 2),
             })
         
-        # Sort by total credits (descending)
-        ranking.sort(key=lambda x: x["total_credits"], reverse=True)
+        # Sort by total credits (descending) - users with 0 credits will be at the bottom
+        ranking.sort(key=lambda x: (x["total_credits"], x["trips_count"]), reverse=True)
         
         # Add rank
         for i, entry in enumerate(ranking):
