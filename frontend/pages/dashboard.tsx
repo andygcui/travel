@@ -19,6 +19,11 @@ interface SavedTrip {
   created_at: string;
   updated_at: string;
   user_id?: string;
+  trip_status?: "draft" | "before" | "during" | "after";
+  selected_flight_id?: string | null;
+  selected_flight_data?: any;
+  carbon_emissions_kg?: number | null;
+  carbon_credits?: number | null;
 }
 
 interface SharedTrip {
@@ -38,6 +43,168 @@ interface SharedTrip {
   can_edit: boolean;
   share_id: string;
   is_shared?: boolean;
+}
+
+// Completed Trips List Component
+function CompletedTripsList({ userId }: { userId?: string }) {
+  const [completedTrips, setCompletedTrips] = useState<SavedTrip[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (userId) {
+      loadCompleted();
+    }
+  }, [userId]);
+
+  const loadCompleted = async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("saved_trips")
+        .select("*, trip_status, selected_flight_id, selected_flight_data, carbon_emissions_kg, carbon_credits")
+        .eq("user_id", userId)
+        .eq("trip_status", "after")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setCompletedTrips(data || []);
+    } catch (err: any) {
+      console.error("Error loading completed trips:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return "Not set";
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount);
+  };
+
+  if (loading) {
+    return <div className="text-center text-emerald-700 py-8">Loading completed trips...</div>;
+  }
+
+  if (completedTrips.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-4xl mb-4">✈️</div>
+        <p className="text-emerald-700">No completed trips yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {completedTrips.map((trip) => (
+        <div
+          key={trip.id}
+          className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-6 shadow-sm"
+        >
+          <div className="mb-4">
+            <h3 className="text-xl font-semibold text-emerald-900">{trip.trip_name}</h3>
+            <p className="text-sm text-emerald-600">{trip.destination}</p>
+          </div>
+
+          <div className="mb-4 space-y-2 text-sm text-emerald-700">
+            {trip.start_date && trip.end_date && (
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-500">📅</span>
+                <span>
+                  {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
+                </span>
+              </div>
+            )}
+            {trip.num_days && (
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-500">⏱️</span>
+                <span>{trip.num_days} days</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-500">💰</span>
+              <span>Budget: {formatCurrency(trip.budget)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-500">🎯</span>
+              <span className="capitalize">{trip.mode}</span>
+            </div>
+            {/* Carbon Data */}
+            {(trip.carbon_emissions_kg || trip.carbon_credits) && (
+              <div className="mt-3 pt-3 border-t border-emerald-200">
+                {trip.carbon_emissions_kg && (
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <span>🌍</span>
+                    <span>Emissions: {trip.carbon_emissions_kg.toFixed(1)} kg</span>
+                  </div>
+                )}
+                {trip.carbon_credits && (
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <span>⭐</span>
+                    <span>Credits: {trip.carbon_credits.toFixed(1)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Trip Plan Details */}
+          {trip.itinerary_data && (
+            <div className="mt-4 pt-4 border-t border-emerald-200">
+              <h4 className="text-sm font-semibold text-emerald-900 mb-2">Trip Plan:</h4>
+              <div className="bg-white rounded-lg p-4 max-h-64 overflow-y-auto">
+                {trip.itinerary_data.days && trip.itinerary_data.days.length > 0 ? (
+                  <div className="space-y-4">
+                    {trip.itinerary_data.days.map((day: any, idx: number) => (
+                      <div key={idx} className="border-b border-emerald-100 pb-3 last:border-b-0">
+                        <p className="font-semibold text-emerald-800 mb-2">Day {day.day || idx + 1}</p>
+                        {day.morning && (
+                          <p className="text-xs text-emerald-700 mb-1">
+                            <span className="font-medium">Morning:</span> {day.morning}
+                          </p>
+                        )}
+                        {day.afternoon && (
+                          <p className="text-xs text-emerald-700 mb-1">
+                            <span className="font-medium">Afternoon:</span> {day.afternoon}
+                          </p>
+                        )}
+                        {day.evening && (
+                          <p className="text-xs text-emerald-700">
+                            <span className="font-medium">Evening:</span> {day.evening}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-emerald-600 italic">No detailed itinerary available</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 text-xs text-gray-400">
+            Completed {new Date(trip.updated_at || trip.created_at).toLocaleDateString()}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -70,6 +237,15 @@ export default function Dashboard() {
   const [selectedTrip, setSelectedTrip] = useState<SavedTrip | null>(null);
   const [sharingTrip, setSharingTrip] = useState(false);
   const [checkingPreferences, setCheckingPreferences] = useState(false);
+  const [carbonStats, setCarbonStats] = useState<{
+    trips_count: number;
+    total_emissions_kg: number;
+    total_credits: number;
+  } | null>(null);
+  const [carbonRanking, setCarbonRanking] = useState<any[]>([]);
+  const [loadingCarbonStats, setLoadingCarbonStats] = useState(false);
+  const [updatingTripStatus, setUpdatingTripStatus] = useState<string | null>(null);
+  const [showCompletedTrips, setShowCompletedTrips] = useState(false);
   const previousPreferencesRef = useRef<string>("");
   const previousRegistrationPrefsRef = useRef<string>("");
   const previousProfileSummaryRef = useRef<string>("");
@@ -122,11 +298,90 @@ export default function Dashboard() {
         loadFriends();
         loadPendingRequests();
         loadSharedTrips(session.user.id);
+        loadCarbonStats(session.user.id);
+        loadCarbonRanking(session.user.id);
       } else {
         router.push("/");
       }
     });
   }, [router]);
+
+  const loadCarbonStats = async (userId: string) => {
+    setLoadingCarbonStats(true);
+    try {
+      const response = await fetch(`http://localhost:8000/trips/carbon-stats?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCarbonStats(data);
+      }
+    } catch (err) {
+      console.error("Error loading carbon stats:", err);
+    } finally {
+      setLoadingCarbonStats(false);
+    }
+  };
+
+  const loadCarbonRanking = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/trips/carbon-ranking?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCarbonRanking(data.ranking || []);
+      }
+    } catch (err) {
+      console.error("Error loading carbon ranking:", err);
+    }
+  };
+
+  const handleUpdateTripStatus = async (tripId: string, newStatus: "draft" | "before" | "during" | "after", trip: SavedTrip) => {
+    if (!user) return;
+
+    // For 'during' and 'after', require flight selection
+    if (newStatus !== "before" && newStatus !== "draft" && !trip.selected_flight_id) {
+      alert("Please select a flight option in the trip details before marking as 'during' or 'after'. Click 'View Trip' to select a flight.");
+      return;
+    }
+
+    setUpdatingTripStatus(tripId);
+    try {
+      // If we're updating to 'during' or 'after' and don't have carbon data yet, we need to calculate it
+      // But since we don't have the flight data here, we'll just update the status
+      // The carbon data should already be stored if a flight was selected in the results page
+      const response = await fetch("http://localhost:8000/trips/status", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: tripId,
+          user_id: user.id,
+          status: newStatus,
+          selected_flight_id: trip.selected_flight_id || null,
+          selected_flight_data: trip.selected_flight_data || null,
+          carbon_emissions_kg: trip.carbon_emissions_kg || null,
+          carbon_credits: trip.carbon_credits || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to update trip status" }));
+        throw new Error(errorData.detail || "Failed to update trip status");
+      }
+
+      // Reload trips and stats
+      await loadTrips(user.id);
+      await loadCarbonStats(user.id);
+      await loadCarbonRanking(user.id);
+      
+      if (newStatus === "after") {
+        alert("Trip completed! Carbon emissions and credits have been recorded.");
+      } else if (newStatus === "before" && trip.trip_status === "draft") {
+        // Draft moved to Plans - no alert needed, it will automatically appear in Plans section
+      }
+    } catch (err: any) {
+      alert(`Failed to update trip status: ${err.message}`);
+    } finally {
+      setUpdatingTripStatus(null);
+    }
+  };
 
   // Poll for new shared trips every 30 seconds and when page becomes visible
   useEffect(() => {
@@ -469,17 +724,66 @@ export default function Dashboard() {
     try {
       const { data, error } = await supabase
         .from("saved_trips")
-        .select("*")
+        .select("*, trip_status, selected_flight_id, selected_flight_data, carbon_emissions_kg, carbon_credits")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setTrips(data || []);
+      
+      // Filter out "after" trips from main list
+      const activeTrips = (data || []).filter(trip => trip.trip_status !== "after");
+      
+      setTrips(activeTrips);
     } catch (err: any) {
       console.error("Error loading trips:", err);
       alert(`Failed to load trips: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Get plans (before and during trips) sorted by priority
+  const getPlans = () => {
+    const plans = trips.filter(trip => trip.trip_status === "before" || trip.trip_status === "during");
+    return plans.sort((a, b) => {
+      const statusOrder: Record<string, number> = { "during": 1, "before": 2 };
+      const aOrder = statusOrder[a.trip_status || ""] || 999;
+      const bOrder = statusOrder[b.trip_status || ""] || 999;
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+      // If same status, sort by created_at descending
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  };
+
+  // Get drafts
+  const getDrafts = () => {
+    return trips.filter(trip => trip.trip_status === "draft" || !trip.trip_status).sort((a, b) => {
+      // Sort drafts by created_at descending
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  };
+
+  const getCompletedTrips = () => {
+    // Get completed trips from all trips (we'll need to load them separately)
+    return trips.filter(trip => trip.trip_status === "after");
+  };
+
+  const loadCompletedTrips = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("saved_trips")
+        .select("*, trip_status, selected_flight_id, selected_flight_data, carbon_emissions_kg, carbon_credits")
+        .eq("user_id", userId)
+        .eq("trip_status", "after")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (err: any) {
+      console.error("Error loading completed trips:", err);
+      return [];
     }
   };
 
@@ -928,6 +1232,58 @@ export default function Dashboard() {
             </p>
           </div>
 
+          {/* Carbon Stats */}
+          {carbonStats && (
+            <div className="mb-8 grid gap-6 md:grid-cols-3">
+              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Trips Completed</p>
+                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.trips_count}</p>
+                <p className="mt-2 text-sm text-emerald-600/80">Total trips</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Carbon Credits</p>
+                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.total_credits.toFixed(1)}</p>
+                <p className="mt-2 text-sm text-emerald-600/80">Total credits earned</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Total Emissions</p>
+                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.total_emissions_kg.toFixed(1)} kg</p>
+                <p className="mt-2 text-sm text-emerald-600/80">CO₂ emissions</p>
+              </div>
+            </div>
+          )}
+
+          {/* Carbon Credits Ranking */}
+          {carbonRanking.length > 0 && (
+            <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-semibold text-emerald-900">Carbon Credits Ranking</h2>
+              <div className="space-y-2">
+                {carbonRanking.map((entry, idx) => (
+                  <div
+                    key={entry.user_id}
+                    className={`flex items-center justify-between rounded-lg p-3 ${
+                      entry.user_id === user?.id
+                        ? "bg-emerald-50 border-2 border-emerald-300"
+                        : "bg-gray-50 border border-gray-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-emerald-600">#{entry.rank}</span>
+                      <span className="font-medium text-emerald-900">
+                        @{entry.username}
+                        {entry.user_id === user?.id && " (You)"}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-emerald-700">{entry.total_credits.toFixed(1)} credits</p>
+                      <p className="text-xs text-emerald-600">{entry.trips_count} trips</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Travel Profile Summary */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 shadow-sm">
             <h2 className="mb-3 text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
@@ -1218,12 +1574,29 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* My Trips Section */}
+          {/* Plans Section (before and during trips) */}
           <div className="mb-8">
-            <h2 className="mb-4 text-2xl font-semibold text-emerald-900">My Trips</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-semibold text-emerald-900">Plans</h2>
+              <button
+                onClick={async () => {
+                  if (user) {
+                    const completed = await loadCompletedTrips(user.id);
+                    if (completed.length > 0) {
+                      setShowCompletedTrips(true);
+                    } else {
+                      alert("No completed trips yet!");
+                    }
+                  }
+                }}
+                className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                📋 View Completed Trips ({carbonStats?.trips_count || 0})
+              </button>
+            </div>
           </div>
 
-          {trips.length === 0 ? (
+          {getPlans().length === 0 && getDrafts().length === 0 ? (
             <div className="rounded-2xl border border-emerald-200 bg-white p-12 text-center shadow-sm">
               <div className="mb-4 text-6xl">✈️</div>
               <h2 className="mb-2 text-2xl font-semibold text-emerald-900">No trips saved yet</h2>
@@ -1238,8 +1611,10 @@ export default function Dashboard() {
               </Link>
             </div>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {trips.map((trip) => (
+            <>
+              {getPlans().length > 0 && (
+                <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {getPlans().map((trip) => (
                 <div
                   key={trip.id}
                   className="group rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm transition hover:shadow-lg"
@@ -1309,29 +1684,216 @@ export default function Dashboard() {
                       <span className="text-emerald-500">🎯</span>
                       <span className="capitalize">{trip.mode}</span>
                     </div>
+                    {/* Trip Status Progress Tags */}
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-emerald-100">
+                      <span className="text-xs font-medium text-emerald-600">Status:</span>
+                      {(trip.trip_status || "draft") === "draft" ? (
+                        <span className="text-xs font-medium text-gray-500">📝 Draft</span>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className={`text-xs font-medium ${(trip.trip_status || "draft") === "before" ? "text-emerald-700" : (trip.trip_status || "draft") !== "draft" ? "text-emerald-500" : "text-gray-400"}`}>
+                            {(trip.trip_status || "draft") === "before" ? "●" : (trip.trip_status || "draft") !== "draft" ? "✓" : "○"} Before
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${(trip.trip_status || "draft") === "during" ? "text-emerald-700" : (trip.trip_status || "draft") === "after" ? "text-emerald-500" : "text-gray-400"}`}>
+                            {(trip.trip_status || "draft") === "during" ? "●" : (trip.trip_status || "draft") === "after" ? "✓" : "○"} During
+                          </span>
+                          <span className="text-emerald-300">|</span>
+                          <span className={`text-xs font-medium ${(trip.trip_status || "draft") === "after" ? "text-emerald-700" : "text-gray-400"}`}>
+                            {(trip.trip_status || "draft") === "after" ? "●" : "○"} After
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Carbon Data if completed */}
+                    {(trip.trip_status === "after" && (trip.carbon_emissions_kg || trip.carbon_credits)) && (
+                      <div className="mt-2 pt-2 border-t border-emerald-100 text-xs">
+                        {trip.carbon_emissions_kg && (
+                          <div className="flex items-center gap-2 text-emerald-700">
+                            <span>🌍</span>
+                            <span>Emissions: {trip.carbon_emissions_kg.toFixed(1)} kg</span>
+                          </div>
+                        )}
+                        {trip.carbon_credits && (
+                          <div className="flex items-center gap-2 text-emerald-700">
+                            <span>⭐</span>
+                            <span>Credits: {trip.carbon_credits.toFixed(1)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-4 flex gap-3">
+                  <div className="mt-4 flex flex-col gap-3">
                     <button
                       onClick={() => handleViewTrip(trip)}
-                      className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                      className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
                     >
                       View Trip
                     </button>
-                    <Link
-                      href="/"
-                      className="rounded-lg border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
+                    {/* Going Button */}
+                    <button
+                      onClick={() => {
+                        const currentStatus = trip.trip_status || "draft";
+                        if (currentStatus === "draft") {
+                          handleUpdateTripStatus(trip.id, "before", trip);
+                        } else if (currentStatus === "before") {
+                          handleUpdateTripStatus(trip.id, "during", trip);
+                        } else if (currentStatus === "during") {
+                          handleUpdateTripStatus(trip.id, "after", trip);
+                        } else {
+                          alert("Trip is already completed!");
+                        }
+                      }}
+                      disabled={updatingTripStatus === trip.id || trip.trip_status === "after"}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        trip.trip_status === "after"
+                          ? "bg-emerald-600 text-white"
+                          : (trip.trip_status || "draft") === "draft"
+                          ? "border border-gray-300 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
+                          : "border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                      }`}
+                      title={
+                        (trip.trip_status || "draft") === "draft"
+                          ? "Mark as going (planning to go)"
+                          : (trip.trip_status || "draft") === "before"
+                          ? "Mark as during trip (requires flight selection)"
+                          : (trip.trip_status || "draft") === "during"
+                          ? "Mark trip as completed"
+                          : "Trip completed"
+                      }
                     >
-                      Plan New
-                    </Link>
+                      {updatingTripStatus === trip.id
+                        ? "Updating..."
+                        : (trip.trip_status || "draft") === "draft"
+                        ? "✈️ Mark as Going"
+                        : (trip.trip_status || "draft") === "before"
+                        ? "✈️ Going"
+                        : (trip.trip_status || "draft") === "during"
+                        ? "✓ Complete Trip"
+                        : "✓ Completed"}
+                    </button>
                   </div>
 
                   <div className="mt-4 text-xs text-gray-400">
                     Saved {new Date(trip.created_at).toLocaleDateString()}
                   </div>
                 </div>
-              ))}
-            </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Drafts Section */}
+              {getDrafts().length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-4 text-2xl font-semibold text-emerald-900">Drafts</h2>
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {getDrafts().map((trip) => (
+                      <div
+                        key={trip.id}
+                        className="group rounded-2xl border border-gray-200 bg-gray-50 p-6 shadow-sm transition hover:shadow-lg"
+                      >
+                        <div className="mb-4 flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-xl font-semibold text-emerald-900">{trip.trip_name}</h3>
+                            <p className="mt-1 text-sm text-emerald-600">{trip.destination}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={async () => {
+                                console.log("=== SHARE BUTTON CLICKED (DASHBOARD) ===");
+                                console.log("Current user:", user?.id);
+                                console.log("Current friends count before reload:", friends.length);
+                                setSelectedTrip(trip);
+                                if (user) {
+                                  // Reload friends when opening share modal to ensure we have latest data
+                                  console.log("Reloading friends for user:", user.id);
+                                  await loadFriends();
+                                  // Wait a moment for state to update
+                                  setTimeout(() => {
+                                    console.log("Opening share modal, current friends count after reload:", friends.length);
+                                    setShowShareModal(true);
+                                  }, 200);
+                                } else {
+                                  console.warn("No user found when clicking share button");
+                                  setShowShareModal(true);
+                                }
+                              }}
+                              className="rounded-full p-2 text-gray-400 transition hover:bg-emerald-50 hover:text-emerald-500"
+                              title="Share trip"
+                            >
+                              🔗
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTrip(trip.id, false)}
+                              disabled={deleting === trip.id}
+                              className="rounded-full p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                              title="Delete trip"
+                            >
+                              {deleting === trip.id ? "⏳" : "🗑️"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mb-4 space-y-2 text-sm text-emerald-700">
+                          {trip.start_date && trip.end_date && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-500">📅</span>
+                              <span>
+                                {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
+                              </span>
+                            </div>
+                          )}
+                          {trip.num_days && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-500">⏱️</span>
+                              <span>{trip.num_days} days</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-500">💰</span>
+                            <span>Budget: {formatCurrency(trip.budget)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-500">🎯</span>
+                            <span className="capitalize">{trip.mode}</span>
+                          </div>
+                          {/* Trip Status Progress Tags */}
+                          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                            <span className="text-xs font-medium text-emerald-600">Status:</span>
+                            <span className="text-xs font-medium text-gray-500">📝 Draft</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-3">
+                          <button
+                            onClick={() => handleViewTrip(trip)}
+                            className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                          >
+                            View Trip
+                          </button>
+                          {/* Mark as Going Button - moves draft to Plans section */}
+                          <button
+                            onClick={() => {
+                              handleUpdateTripStatus(trip.id, "before", trip);
+                            }}
+                            disabled={updatingTripStatus === trip.id}
+                            className="rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-emerald-200 bg-white text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                            title="Mark as going (will move to Plans section)"
+                          >
+                            {updatingTripStatus === trip.id ? "Updating..." : "✈️ Mark as Going"}
+                          </button>
+                        </div>
+
+                        <div className="mt-4 text-xs text-gray-400">
+                          Saved {new Date(trip.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </main>
@@ -1446,6 +2008,26 @@ export default function Dashboard() {
               >
                 {deletingAccount ? "Deleting..." : "Delete Account"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed Trips Modal */}
+      {showCompletedTrips && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl max-h-[90vh] rounded-2xl border border-emerald-200 bg-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-emerald-100">
+              <h2 className="text-2xl font-bold text-emerald-900">Completed Trips</h2>
+              <button
+                onClick={() => setShowCompletedTrips(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <CompletedTripsList userId={user?.id} />
             </div>
           </div>
         </div>

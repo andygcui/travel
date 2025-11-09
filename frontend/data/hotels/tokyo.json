@@ -1,0 +1,82 @@
+[
+    {
+        "name": "Hilton Tokyo Japan Shinjuku Ku",
+        "address": "6 Chome-6-2 Nishishinjuku, Shinjuku City, Tokyo 160-0023, Japan",
+        "image": "https://bynder.onthebeach.co.uk/cdn-cgi/image/width=1400,quality=70,fit=cover,format=auto/m/44621216f5c3cbc5/original/Hilton-Tokyo-Japan-Shinjuku-Ku-General-view-1.jpg",
+        "nightlyRate": 493,
+        "currency": "USD",
+        "rating": 4.7,
+        "reviewCount": 8991,
+        "latitude": 35.6665,
+        "longitude": 139.7314,
+        "reviews": [
+          {
+            "author": "K. Martinez",
+            "rating": 5,
+            "relative_time_description": "3 weeks ago",
+            "text": "Stayed here for 3 nights and 4 days to explore the city, and everything was amazing — from the service and staff to the food and location. It’s about a 10–15 minute walk from the bustling city area, yet the hotel itself is in a quieter spot, which we really appreciated. There’s also convenient access to the station directly from B1, just a few minutes’ walk away. The room was spotless and exceptionally clean. Breakfast offered a wide selection, including delicious Japanese options. Room dining was excellent — the food was fresh, beautifully presented, and promptly served. The staff come from diverse backgrounds, making communication easy and welcoming. The view from our room was stunning, and we loved that the TV had Netflix, YouTube, and other streaming options. On our last day, I was pleasantly surprised with a thoughtful birthday gift from the hotel — such a lovely gesture! Overall, we were extremely satisfied with our stay and highly recommend this hotel. You truly get what you pay for."
+          }
+        ]
+      },
+    {
+      "name": "Shinagawa Prince Hotel",
+      "address": "4 Chome-10-30 Takanawa, Minato City, Tokyo 108-8611, Japan",
+      "image": "https://www.gotokyo.org/en/spot/821/images/821_0773_2_1400x1100.jpg",
+      "nightlyRate": 106,
+      "currency": "USD",
+      "rating": 4.3,
+      "reviewCount": 2350,
+      "latitude": 35.6665,
+      "longitude": 139.7314,
+      "reviews": [
+        {
+          "author": "Yuki H.",
+          "rating": 5,
+          "relative_time_description": "2 weeks ago",
+          "text": "Perfect location — the hotel is right across the street from Shinagawa Station, making it super convenient for getting around Tokyo or catching the Shinkansen. The breakfast experience was mind-boggling! I’ve never seen such a long lineup so early in the morning for a hotel breakfast— the line forms around 6:30 AM, but it moves surprisingly fast, so no worries there. The buffet itself is outstanding, offering a huge variety of Japanese and Western dishes, all fresh and beautifully arranged. The staff were very kind and helpful, always ready to assist despite the busy atmosphere. Overall, an excellent stay — convenient, comfortable, and an unforgettable breakfast experience!"
+        }
+      ]
+    },
+    {
+        "name": "Trunk Hotel",
+        "address": "5 Chome-31 Jingumae, Shibuya, Tokyo 150-0001, Japan",
+        "image": "https://www.rethinktokyo.com/sites/default/files/trunk_8.jpg",
+        "nightlyRate": 498,
+        "currency": "USD",
+        "rating": 4.2,
+        "reviewCount": 1883,
+        "latitude": 35.6665,
+        "longitude": 139.7314,
+        "reviews": [
+          {
+            "author": "Dominique K.",
+            "rating": 5,
+            "relative_time_description": "1 month ago",
+            "text": "I stayed two nights at this hotel (from Friday to Sunday), for the second time. The place remains as elegant as ever — the design is refined, contemporary, and full of character. My room was cosy, impeccably clean, and the bed exceptionally comfortable, hard to leave in the morning! The staff were highly professional, friendly, and attentive. I had dinner at Trunk Kitchen, and the meal was absolutely delicious. However, I was disappointed by the breakfasts. They are served at the table, as plated dishes that are far too generous. The salmon plate, for example, also included bacon, sausages, lard, and vegetables, too much, and an odd combination. On the other hand, the fruit, yogurt and granola plate was excellent, light, balanced, and very tasty. One downside during my stay: the hotel was hosting several weddings, which made the atmosphere quite noisy. The bar was almost inaccessible, and the usual calm, intimate vibe of the place was missing. Despite this, Trunk Hotel remains a beautiful address in Tokyo, stylish, comfortable, and supported by an outstanding team."
+          }
+        ]
+      },
+    {
+        "name": "Tokyo Bay Shiomi Prince Hotel",
+        "address": "2 Chome-8-16 Shiomi, Koto City, Tokyo 135-0052, Japan",
+        "image": "https://www.princehotels.com/shiomi/wp-content/uploads/sites/59/2019/11/tokyo-bay-shiomi-prince-hotel-deluxe-corner-twin-room-1920.jpg",
+        "nightlyRate": 156,
+        "currency": "USD",
+        "rating": 4.4,
+        "reviewCount": 1324,
+        "latitude": 35.6665,
+        "longitude": 139.7314,
+        "reviews": [
+          {
+            "author": "Annia Hsu",
+            "rating": 5,
+            "relative_time_description": "5 days ago",
+            "text": "I have stayed at this property many times, at least 5, and I am very impressed that I keep seeing the same employees working at this hotel. Hopefully this is a good sign that there is low turnover because the employees are treated well. The reason for staying so many times at this place is because of it's convenient location. Hotel is literally right outside the Shiomi train station, and a big supermarket nearby that makes a quick bite cheap and easy. Moreover, hotel has a hot bath which is very clean, comfortable and relaxing. The only minor disadvantage is the gym, only have cardio machines like tread mill, rower and bikes, but not weights. Would be nice to have some free weights for strength training even if the hotel does not wish to install resistance training machines. Room is spacious, clean and excellent for the price, it's the kind of size you cannot find in Tokyo mainland area. The breakfast is absolutely amazing; not the biggest variety but it has everything you'd want. Quality of food is great too. Highly recommend their French toast and curry. Service is consistently excellent."
+          }
+        ]
+      }
+  ]
+
+
+  
+  
