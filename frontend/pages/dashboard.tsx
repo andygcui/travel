@@ -1165,37 +1165,37 @@ export default function Dashboard() {
             <Link href="/" className="text-2xl font-semibold text-gray-900 transition hover:text-gray-700">
               GreenTrip
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {user && (
                 <>
                   <Link
                     href="/friends"
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Leaderboard
                   </Link>
                   <Link
                     href="/emissions"
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Emissions Guide
                   </Link>
                   <button
                     onClick={checkAndReloadPreferences}
                     disabled={checkingPreferences}
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-emerald-300"
                     title="Check for preference changes and reload profile"
                   >
-                    {checkingPreferences ? "🔄 Checking..." : "🔄 Refresh Profile"}
+                    {checkingPreferences ? "Checking..." : "Refresh Profile"}
                   </button>
-                  <span className="text-sm text-emerald-700">
+                  <span className="text-sm font-medium text-emerald-900">
                     {user?.user_metadata?.first_name && user?.user_metadata?.last_name
                       ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
                       : user?.user_metadata?.name || user?.email}
                   </span>
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm font-medium text-red-600 transition hover:text-red-500 disabled:cursor-not-allowed disabled:text-red-300"
                     disabled={deletingAccount}
                   >
                     {deletingAccount ? "Deleting..." : "Delete Account"}
@@ -1205,7 +1205,7 @@ export default function Dashboard() {
                       await supabase.auth.signOut();
                       router.push("/");
                     }}
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Sign Out
                   </button>
@@ -1218,50 +1218,60 @@ export default function Dashboard() {
         {/* Main Content */}
         <main className="mx-auto max-w-7xl px-6 py-12">
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-emerald-900">My Saved Trips</h1>
+            <h1 className="text-4xl font-bold text-emerald-900">Dashboard</h1>
             <p className="mt-2 text-emerald-700">
-              View and manage your travel itineraries
+              View and manage your past and future travel itineraries
             </p>
           </div>
 
           {/* Carbon Stats */}
           {carbonStats && (
-            <div className="mb-8 grid gap-6 md:grid-cols-3">
-              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Trips Completed</p>
-                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.trips_count}</p>
-                <p className="mt-2 text-sm text-emerald-600/80">Total trips</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Carbon Credits</p>
-                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.total_credits.toFixed(1)}</p>
-                <p className="mt-2 text-sm text-emerald-600/80">Total credits earned</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Total Emissions</p>
-                <p className="text-4xl font-bold text-[#0b3d2e]">{carbonStats.total_emissions_kg.toFixed(1)} kg</p>
-                <p className="mt-2 text-sm text-emerald-600/80">CO₂ emissions</p>
+            <div className="mb-10 border-t border-slate-200 pt-8">
+              <div className="mx-auto grid max-w-3xl gap-8 text-center text-slate-900 md:grid-cols-3">
+                <div className="flex flex-col gap-2">
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Trips completed
+                  </span>
+                  <span className="text-3xl font-semibold">{carbonStats.trips_count}</span>
+                  <span className="text-xs text-slate-500">Total trips recorded</span>
+                </div>
+                <div className="flex flex-col gap-2 border-t border-slate-200 pt-6 md:border-0 md:pt-0">
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Carbon credits
+                  </span>
+                  <span className="text-3xl font-semibold">{carbonStats.total_credits.toFixed(1)}</span>
+                  <span className="text-xs text-slate-500">Credits accumulated</span>
+                </div>
+                <div className="flex flex-col gap-2 border-t border-slate-200 pt-6 md:border-0 md:pt-0">
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Total emissions
+                  </span>
+                  <span className="text-3xl font-semibold">
+                    {carbonStats.total_emissions_kg.toFixed(1)} kg
+                  </span>
+                  <span className="text-xs text-slate-500">CO₂e across completed trips</span>
+                </div>
               </div>
             </div>
           )}
 
 
           {/* Travel Profile - Combined Preferences */}
-          <div className="mb-8 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-emerald-900">Your Travel Profile</h2>
+          <div className="mb-8 rounded-2xl border border-slate-200 bg-white/85 p-6 shadow-sm backdrop-blur">
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-2xl">
+                <h2 className="text-xl font-semibold text-slate-900">Travel Profile</h2>
                 {loadingProfile ? (
-                  <p className="mt-1 text-sm text-emerald-600">Loading profile summary...</p>
+                  <p className="mt-2 text-sm text-slate-600">Preparing your profile summary…</p>
                 ) : profileSummary && profileSummary.trim() !== "" && !profileSummary.includes("Unable to") ? (
-                  <p className="mt-2 text-sm text-emerald-800 leading-relaxed">{profileSummary}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-700">{profileSummary}</p>
                 ) : (
-                  <p className="mt-1 text-sm text-emerald-600 italic">
-                    No profile summary yet. Start planning trips and using the chat feature to build your travel profile!
+                  <p className="mt-3 text-sm text-slate-600">
+                    We haven’t generated a profile summary yet. Start planning a trip or share a few preferences to get a tailored overview.
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   onClick={() => {
                     if (registrationPrefs &&
@@ -1269,13 +1279,11 @@ export default function Dashboard() {
                        registrationPrefs.likes?.length > 0 ||
                        registrationPrefs.dislikes?.length > 0 ||
                        registrationPrefs.dietary_restrictions?.length > 0)) {
-                      // Load current preferences into editing state
                       setEditingPreferences(registrationPrefs.preferences || []);
                       setEditingLikes(registrationPrefs.likes || []);
                       setEditingDislikes(registrationPrefs.dislikes || []);
                       setEditingDietary(registrationPrefs.dietary_restrictions || []);
                     } else {
-                      // Initialize empty preferences for editing
                       setEditingPreferences([]);
                       setEditingLikes([]);
                       setEditingDislikes([]);
@@ -1283,27 +1291,27 @@ export default function Dashboard() {
                     }
                     setShowEditRegistrationPrefs(true);
                   }}
-                  className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
                 >
                   {registrationPrefs &&
                   (registrationPrefs.preferences?.length > 0 ||
                    registrationPrefs.likes?.length > 0 ||
                    registrationPrefs.dislikes?.length > 0 ||
                    registrationPrefs.dietary_restrictions?.length > 0)
-                    ? "Edit Registration Preferences"
-                    : "Add Registration Preferences"}
+                    ? "Manage Saved Preferences"
+                    : "Capture Preferences"}
                 </button>
                 <button
                   onClick={() => setShowPreferencesChat(true)}
-                  className="rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
                 >
-                  Tell Me About Your Preferences
+                  Preference Assistant
                 </button>
               </div>
             </div>
 
             {loadingRegistrationPrefs || loadingPreferences ? (
-              <p className="text-emerald-700">Loading preferences...</p>
+              <p className="text-slate-600">Loading preferences…</p>
             ) : (
               <div className="space-y-6">
                 {/* Registration Preferences */}
@@ -1313,18 +1321,18 @@ export default function Dashboard() {
                  registrationPrefs.dislikes?.length > 0 ||
                  registrationPrefs.dietary_restrictions?.length > 0) ? (
                   <div>
-                    <h3 className="mb-3 text-lg font-semibold text-emerald-800">Registration Preferences</h3>
+                    <h3 className="mb-3 text-lg font-semibold text-slate-900">Registration Preferences</h3>
                     <div className="space-y-4">
                       {registrationPrefs.preferences && registrationPrefs.preferences.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Interests
                           </h4>
                           <div className="flex flex-wrap gap-2">
                             {registrationPrefs.preferences.map((pref: string, idx: number) => (
                               <span
                                 key={idx}
-                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
                               >
                                 {pref}
                               </span>
@@ -1334,14 +1342,14 @@ export default function Dashboard() {
                       )}
                       {registrationPrefs.likes && registrationPrefs.likes.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Things You Like
                           </h4>
                           <div className="flex flex-wrap gap-2">
                             {registrationPrefs.likes.map((like: string, idx: number) => (
                               <span
                                 key={idx}
-                                className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800"
+                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"
                               >
                                 {like}
                               </span>
@@ -1351,14 +1359,14 @@ export default function Dashboard() {
                       )}
                       {registrationPrefs.dislikes && registrationPrefs.dislikes.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Things You Dislike
                           </h4>
                           <div className="flex flex-wrap gap-2">
                             {registrationPrefs.dislikes.map((dislike: string, idx: number) => (
                               <span
                                 key={idx}
-                                className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800"
+                                className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700"
                               >
                                 {dislike}
                               </span>
@@ -1368,14 +1376,14 @@ export default function Dashboard() {
                       )}
                       {registrationPrefs.dietary_restrictions && registrationPrefs.dietary_restrictions.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Dietary Restrictions
                           </h4>
                           <div className="flex flex-wrap gap-2">
                             {registrationPrefs.dietary_restrictions.map((diet: string, idx: number) => (
                               <span
                                 key={idx}
-                                className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-800"
+                                className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700"
                               >
                                 {diet}
                               </span>
@@ -1386,10 +1394,10 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  <div>
-                    <h3 className="mb-2 text-lg font-semibold text-emerald-800">Registration Preferences</h3>
-                    <p className="text-sm text-emerald-600 italic">
-                      No registration preferences yet. Click "Add Registration Preferences" to set your travel preferences!
+                  <div className="rounded-lg border border-dashed border-slate-300 p-4">
+                    <h3 className="mb-2 text-lg font-semibold text-slate-900">Registration Preferences</h3>
+                    <p className="text-sm text-slate-600">
+                      No saved preferences yet. Capture a few core interests so future itineraries can be tailored to you.
                     </p>
                   </div>
                 )}
@@ -1397,18 +1405,18 @@ export default function Dashboard() {
                 {/* Chat-Learned Preferences */}
                 {preferences ? (
                   <div>
-                    <h3 className="mb-3 text-lg font-semibold text-emerald-800">Chat-Learned Preferences</h3>
+                    <h3 className="mb-3 text-lg font-semibold text-slate-900">Chat-Learned Preferences</h3>
                     <div className="space-y-4">
                       {preferences.long_term && preferences.long_term.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Long-term Preferences
                           </h4>
                           <div className="flex flex-wrap gap-2">
                             {preferences.long_term.map((pref: any, idx: number) => (
                               <span
                                 key={idx}
-                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800"
+                                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
                               >
                                 {pref.preference_value} ({pref.frequency}x)
                               </span>
@@ -1418,7 +1426,7 @@ export default function Dashboard() {
                       )}
                       {preferences.frequent_trip_specific && preferences.frequent_trip_specific.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Frequent Trip Preferences
                           </h4>
                           <div className="flex flex-wrap gap-2">
@@ -1435,7 +1443,7 @@ export default function Dashboard() {
                       )}
                       {preferences.temporal && preferences.temporal.length > 0 && (
                         <div>
-                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-600">
+                          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Temporal Preferences
                           </h4>
                           <div className="flex flex-wrap gap-2">
@@ -1453,17 +1461,17 @@ export default function Dashboard() {
                       {(!preferences.long_term || preferences.long_term.length === 0) &&
                         (!preferences.frequent_trip_specific || preferences.frequent_trip_specific.length === 0) &&
                         (!preferences.temporal || preferences.temporal.length === 0) && (
-                          <p className="text-sm text-emerald-600 italic">
-                            No chat-learned preferences yet. Click "Tell Me About Your Preferences" to start building your profile!
+                          <p className="text-sm text-slate-600">
+                            The assistant hasn’t captured any conversational insights yet. Engage with the Preference Assistant to train future recommendations.
                           </p>
                         )}
                     </div>
                   </div>
                 ) : (
-                  <div>
-                    <h3 className="mb-2 text-lg font-semibold text-emerald-800">Chat-Learned Preferences</h3>
-                    <p className="text-sm text-emerald-600 italic">
-                      No chat-learned preferences yet. Click "Tell Me About Your Preferences" to start building your profile!
+                  <div className="rounded-lg border border-dashed border-slate-300 p-4">
+                    <h3 className="mb-2 text-lg font-semibold text-slate-900">Chat-Learned Preferences</h3>
+                    <p className="text-sm text-slate-600">
+                      No conversational preferences stored. Use the Preference Assistant to document recurring themes for future trips.
                     </p>
                   </div>
                 )}
@@ -1559,14 +1567,14 @@ export default function Dashboard() {
                 }}
                 className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
-                📋 View Completed Trips ({carbonStats?.trips_count || 0})
+                View Completed Trips ({carbonStats?.trips_count || 0})
               </button>
             </div>
           </div>
 
           {getPlans().length === 0 && getDrafts().length === 0 ? (
             <div className="rounded-2xl border border-emerald-200 bg-white p-12 text-center shadow-sm">
-              <div className="mb-4 text-6xl">✈️</div>
+              <div className="mb-4 text-6xl"></div>
               <h2 className="mb-2 text-2xl font-semibold text-emerald-900">No trips saved yet</h2>
               <p className="mb-6 text-emerald-700">
                 Start planning your next adventure and save your itineraries here!

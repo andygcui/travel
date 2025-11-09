@@ -358,22 +358,22 @@ export default function Friends() {
             <Link href="/" className="text-2xl font-semibold text-gray-900 transition hover:text-gray-700">
               GreenTrip
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {user && (
                 <>
                   <Link
                     href="/dashboard"
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Profile
                   </Link>
                   <Link
                     href="/emissions"
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Emissions Guide
                   </Link>
-                  <span className="text-sm text-emerald-700">
+                  <span className="text-sm font-medium text-emerald-900">
                     {user?.user_metadata?.first_name && user?.user_metadata?.last_name
                       ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
                       : user?.user_metadata?.name || user?.email}
@@ -383,7 +383,7 @@ export default function Friends() {
                       await supabase.auth.signOut();
                       router.push("/");
                     }}
-                    className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                    className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                   >
                     Sign Out
                   </button>
