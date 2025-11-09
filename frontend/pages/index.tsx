@@ -98,7 +98,7 @@ export default function Home() {
         setLikes(data.likes || []);
         setDislikes(data.dislikes || []);
         setDietaryRestrictions(data.dietary_restrictions || []);
-        setPreferences(data.preferences || []);
+        setPreferences((data.preferences || []).map((pref: string) => pref?.toLowerCase?.() || "").filter(Boolean));
       }
 
       // Also load chat-learned preferences
