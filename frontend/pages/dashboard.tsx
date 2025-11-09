@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
+import PreferencesChat from "../components/PreferencesChat";
+import EditRegistrationPreferencesModal from "../components/EditRegistrationPreferencesModal";
 
 interface SavedTrip {
   id: string;
@@ -32,15 +34,46 @@ export default function Dashboard() {
   const [loadingRegistrationPrefs, setLoadingRegistrationPrefs] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [showPreferencesChat, setShowPreferencesChat] = useState(false);
+  const [showEditRegistrationPrefs, setShowEditRegistrationPrefs] = useState(false);
+  const [editingPreferences, setEditingPreferences] = useState<string[]>([]);
+  const [editingLikes, setEditingLikes] = useState<string[]>([]);
+  const [editingDislikes, setEditingDislikes] = useState<string[]>([]);
+  const [editingDietary, setEditingDietary] = useState<string[]>([]);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const previousPreferencesRef = useRef<string>("");
+  const previousRegistrationPrefsRef = useRef<string>("");
+  const previousProfileSummaryRef = useRef<string>("");
+
+  // Load cached profile summary from localStorage on mount
+  useEffect(() => {
+    if (user?.id) {
+      const cachedSummary = localStorage.getItem(`profile_summary_${user.id}`);
+      const cachedPrefs = localStorage.getItem(`preferences_${user.id}`);
+      const cachedRegPrefs = localStorage.getItem(`registration_preferences_${user.id}`);
+      
+      if (cachedSummary) {
+        previousProfileSummaryRef.current = cachedSummary;
+        setProfileSummary(cachedSummary);
+      }
+      if (cachedPrefs) {
+        previousPreferencesRef.current = cachedPrefs;
+      }
+      if (cachedRegPrefs) {
+        previousRegistrationPrefsRef.current = cachedRegPrefs;
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
         loadTrips(session.user.id);
-        loadProfile(session.user.id);
+        // Load preferences first, then profile (profile will check if preferences changed)
         loadPreferences(session.user.id);
         loadRegistrationPreferences(session.user.id);
+        loadProfile(session.user.id);
       } else {
         router.push("/");
       }
@@ -50,16 +83,60 @@ export default function Dashboard() {
       if (session?.user) {
         setUser(session.user);
         loadTrips(session.user.id);
-        loadProfile(session.user.id);
+        // Load preferences first, then profile (profile will check if preferences changed)
         loadPreferences(session.user.id);
         loadRegistrationPreferences(session.user.id);
+        loadProfile(session.user.id);
       } else {
         router.push("/");
       }
     });
   }, [router]);
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, forceReload: boolean = false) => {
+    // Load cached preferences from localStorage
+    const cachedPrefs = localStorage.getItem(`preferences_${userId}`);
+    const cachedRegPrefs = localStorage.getItem(`registration_preferences_${userId}`);
+    const cachedSummary = localStorage.getItem(`profile_summary_${userId}`);
+    
+    // Update refs from localStorage if available
+    if (cachedPrefs && !previousPreferencesRef.current) {
+      previousPreferencesRef.current = cachedPrefs;
+    }
+    if (cachedRegPrefs && !previousRegistrationPrefsRef.current) {
+      previousRegistrationPrefsRef.current = cachedRegPrefs;
+    }
+    if (cachedSummary && !previousProfileSummaryRef.current) {
+      previousProfileSummaryRef.current = cachedSummary;
+      setProfileSummary(cachedSummary);
+    }
+    
+    // Check if we already have a profile summary and preferences haven't changed
+    // Only skip reload if:
+    // 1. Not forced to reload
+    // 2. We have a cached summary (from localStorage or ref)
+    // 3. We have tracked preferences (meaning they've been loaded at least once)
+    // 4. Current preferences match cached preferences
+    const currentPrefsString = previousPreferencesRef.current || cachedPrefs || "";
+    const currentRegPrefsString = previousRegistrationPrefsRef.current || cachedRegPrefs || "";
+    const currentSummary = previousProfileSummaryRef.current || cachedSummary || "";
+    
+    // Only use cache if we have all the data and preferences haven't changed
+    // We need to wait for preferences to be loaded first to compare them
+    if (!forceReload && 
+        currentSummary && 
+        currentSummary !== "" &&
+        currentPrefsString !== "" &&
+        currentRegPrefsString !== "") {
+      // Use cached summary immediately for fast UI
+      console.log("Using cached profile summary - preferences match cached state");
+      if (currentSummary !== profileSummary) {
+        setProfileSummary(currentSummary);
+      }
+      setLoadingProfile(false);
+      return;
+    }
+
     setLoadingProfile(true);
     try {
       console.log("Loading profile for user:", userId);
@@ -77,12 +154,18 @@ export default function Dashboard() {
           // Don't show backend error messages to user
           console.warn("Backend returned error message, filtering out:", summary);
           setProfileSummary("");
+          previousProfileSummaryRef.current = "";
         } else if (summary && summary.trim() !== "") {
           console.log("Setting profile summary:", summary);
           setProfileSummary(summary);
+          previousProfileSummaryRef.current = summary;
+          // Save to localStorage for persistence across page reloads
+          localStorage.setItem(`profile_summary_${userId}`, summary);
         } else {
           console.warn("Summary is empty or whitespace only");
           setProfileSummary("");
+          previousProfileSummaryRef.current = "";
+          localStorage.removeItem(`profile_summary_${userId}`);
         }
       } else {
         // If response is not OK, log the error
@@ -94,28 +177,49 @@ export default function Dashboard() {
         }
         // Set empty summary if profile can't be loaded
         setProfileSummary("");
+        previousProfileSummaryRef.current = "";
       }
     } catch (err: any) {
       console.error("Error loading profile (network error):", err);
       // Set empty summary on error
       setProfileSummary("");
+      previousProfileSummaryRef.current = "";
     } finally {
       setLoadingProfile(false);
     }
   };
 
-  const loadPreferences = async (userId: string) => {
+  const loadPreferences = async (userId: string, forceReload: boolean = false) => {
     setLoadingPreferences(true);
     try {
       const response = await fetch(`http://localhost:8000/user/preferences?user_id=${userId}`);
       if (response.ok) {
         const data = await response.json();
-        // Ensure we always have a valid structure, even if empty
-        setPreferences({
+        // Create a string representation of preferences to compare
+        const preferencesString = JSON.stringify({
           long_term: data.long_term || [],
           frequent_trip_specific: data.frequent_trip_specific || [],
           temporal: data.temporal || [],
         });
+        
+        // Only update if preferences actually changed or if forced
+        if (forceReload || preferencesString !== previousPreferencesRef.current) {
+          const preferencesChanged = preferencesString !== previousPreferencesRef.current;
+          previousPreferencesRef.current = preferencesString;
+          // Save to localStorage for persistence across page reloads
+          localStorage.setItem(`preferences_${userId}`, preferencesString);
+          setPreferences({
+            long_term: data.long_term || [],
+            frequent_trip_specific: data.frequent_trip_specific || [],
+            temporal: data.temporal || [],
+          });
+          
+          // Reload profile summary if preferences changed
+          if (preferencesChanged && user) {
+            console.log("Preferences changed, reloading profile summary");
+            loadProfile(user.id, true);
+          }
+        }
       } else {
         // If response is not OK, log the error
         console.error("Error loading preferences:", response.status, response.statusText);
@@ -161,9 +265,43 @@ export default function Dashboard() {
         console.error("Error code:", error.code, "Error message:", error.message);
       } else if (data) {
         console.log("Registration preferences loaded:", data);
+        const regPrefsString = JSON.stringify({
+          preferences: data.preferences || [],
+          likes: data.likes || [],
+          dislikes: data.dislikes || [],
+          dietary_restrictions: data.dietary_restrictions || [],
+        });
+        
+        // Check if registration preferences changed
+        const regPrefsChanged = regPrefsString !== previousRegistrationPrefsRef.current;
+        previousRegistrationPrefsRef.current = regPrefsString;
+        // Save to localStorage for persistence across page reloads
+        localStorage.setItem(`registration_preferences_${userId}`, regPrefsString);
         setRegistrationPrefs(data);
+        
+        // Reload profile summary if registration preferences changed
+        if (regPrefsChanged && user) {
+          console.log("Registration preferences changed, reloading profile summary");
+          loadProfile(user.id, true);
+        }
       } else {
         console.log("No registration preferences found for user:", userId);
+        const emptyRegPrefsString = JSON.stringify({
+          preferences: [],
+          likes: [],
+          dislikes: [],
+          dietary_restrictions: [],
+        });
+        const regPrefsChanged = emptyRegPrefsString !== previousRegistrationPrefsRef.current;
+        previousRegistrationPrefsRef.current = emptyRegPrefsString;
+        // Save to localStorage for persistence across page reloads
+        localStorage.setItem(`registration_preferences_${userId}`, emptyRegPrefsString);
+        
+        // Reload profile summary if registration preferences changed (from something to nothing)
+        if (regPrefsChanged && user) {
+          console.log("Registration preferences changed (to empty), reloading profile summary");
+          loadProfile(user.id, true);
+        }
       }
     } catch (err: any) {
       console.error("Error loading registration preferences:", err);
@@ -414,13 +552,29 @@ export default function Dashboard() {
             <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
               <p className="text-emerald-700">Loading registration preferences...</p>
             </div>
-          ) : registrationPrefs && (
-            (registrationPrefs.preferences?.length > 0 ||
-             registrationPrefs.likes?.length > 0 ||
-             registrationPrefs.dislikes?.length > 0 ||
-             registrationPrefs.dietary_restrictions?.length > 0) && (
+          ) : (
+            (registrationPrefs &&
+              (registrationPrefs.preferences?.length > 0 ||
+                registrationPrefs.likes?.length > 0 ||
+                registrationPrefs.dislikes?.length > 0 ||
+                registrationPrefs.dietary_restrictions?.length > 0)) ? (
               <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-4 text-xl font-semibold text-emerald-900">Registration Preferences</h2>
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-emerald-900">Registration Preferences</h2>
+                  <button
+                    onClick={() => {
+                      // Load current preferences into editing state
+                      setEditingPreferences(registrationPrefs.preferences || []);
+                      setEditingLikes(registrationPrefs.likes || []);
+                      setEditingDislikes(registrationPrefs.dislikes || []);
+                      setEditingDietary(registrationPrefs.dietary_restrictions || []);
+                      setShowEditRegistrationPrefs(true);
+                    }}
+                    className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Edit
+                  </button>
+                </div>
                 <div className="space-y-4">
                   {registrationPrefs.preferences && registrationPrefs.preferences.length > 0 && (
                     <div>
@@ -492,12 +646,42 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
+            ) : (
+              <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-emerald-900">Registration Preferences</h2>
+                  <button
+                    onClick={() => {
+                      // Initialize empty preferences for editing
+                      setEditingPreferences([]);
+                      setEditingLikes([]);
+                      setEditingDislikes([]);
+                      setEditingDietary([]);
+                      setShowEditRegistrationPrefs(true);
+                    }}
+                    className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    Add Preferences
+                  </button>
+                </div>
+                <p className="text-emerald-700 italic">
+                  No registration preferences yet. Click "Add Preferences" to set your travel preferences!
+                </p>
+              </div>
             )
           )}
 
           {/* Chat-Learned Preferences */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-xl font-semibold text-emerald-900">Chat-Learned Preferences</h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-emerald-900">Chat-Learned Preferences</h2>
+              <button
+                onClick={() => setShowPreferencesChat(true)}
+                className="rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+              >
+                Tell Me More About Your Preferences
+              </button>
+            </div>
             {loadingPreferences ? (
               <p className="text-emerald-700">Loading preferences...</p>
             ) : preferences ? (
@@ -653,6 +837,67 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+
+      {/* Preferences Chat Modal */}
+      {showPreferencesChat && (
+        <PreferencesChat
+          onPreferencesUpdated={() => {
+            // Reload preferences when they're updated
+            if (user) {
+              loadPreferences(user.id, true);
+              // Profile summary will be reloaded automatically when preferences change
+            }
+          }}
+          onClose={() => setShowPreferencesChat(false)}
+        />
+      )}
+
+      {/* Edit Registration Preferences Modal */}
+      {showEditRegistrationPrefs && (
+        <EditRegistrationPreferencesModal
+          preferences={editingPreferences}
+          likes={editingLikes}
+          dislikes={editingDislikes}
+          dietary={editingDietary}
+          onPreferencesChange={setEditingPreferences}
+          onLikesChange={setEditingLikes}
+          onDislikesChange={setEditingDislikes}
+          onDietaryChange={setEditingDietary}
+          onSave={async () => {
+            if (!user) return;
+            setSavingPreferences(true);
+            try {
+              const response = await fetch('http://localhost:8000/user/preferences/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  user_id: user.id,
+                  preferences: editingPreferences,
+                  likes: editingLikes,
+                  dislikes: editingDislikes,
+                  dietary_restrictions: editingDietary,
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to save preferences');
+              }
+
+              // Reload preferences and profile summary
+              await loadRegistrationPreferences(user.id);
+              await loadProfile(user.id, true);
+              setShowEditRegistrationPrefs(false);
+            } catch (err: any) {
+              console.error('Error saving preferences:', err);
+              alert(`Failed to save preferences: ${err.message}`);
+            } finally {
+              setSavingPreferences(false);
+            }
+          }}
+          onClose={() => setShowEditRegistrationPrefs(false)}
+          saving={savingPreferences}
+        />
+      )}
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteConfirm && (

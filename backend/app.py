@@ -49,6 +49,14 @@ class ChatPlannerResponse(BaseModel):
     extracted_preferences: Optional[List[Dict[str, Any]]] = None
 
 
+class SaveUserPreferencesRequest(BaseModel):
+    user_id: str
+    preferences: List[str] = []
+    likes: List[str] = []
+    dislikes: List[str] = []
+    dietary_restrictions: List[str] = []
+
+
 @app.post("/chat_planner", response_model=ChatPlannerResponse)
 async def chat_planner_endpoint(request: ChatPlannerRequest):
     """Chat with the travel planner to modify itinerary"""
@@ -95,6 +103,31 @@ async def get_user_preferences(user_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching preferences: {str(e)}")
+
+
+@app.post("/user/preferences/save")
+async def save_user_preferences(request: SaveUserPreferencesRequest):
+    """Save user registration preferences (bypasses RLS using service role)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Upsert user preferences
+        result = supabase.table("user_preferences").upsert({
+            "user_id": request.user_id,
+            "preferences": request.preferences,
+            "likes": request.likes,
+            "dislikes": request.dislikes,
+            "dietary_restrictions": request.dietary_restrictions,
+            "updated_at": "now()",
+        }, on_conflict="user_id").execute()
+        
+        logger.info(f"Saved preferences for user {request.user_id}")
+        return {"message": "Preferences saved successfully", "data": result.data}
+    except Exception as e:
+        logger.error(f"Error saving preferences: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error saving preferences: {str(e)}")
 
 
 @app.get("/user/profile")

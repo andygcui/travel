@@ -145,7 +145,7 @@ async def generate_user_profile_summary(user_id: str) -> str:
         ])
         logger.info(f"Generating summary with preferences: {preferences_text[:200]}...")
         
-        summary_prompt = f"""Based on the following travel preferences, generate a friendly, natural language summary (2-3 sentences) that describes the user's travel style and preferences.
+        summary_prompt = f"""Based on the following travel preferences, generate a friendly, natural language summary that describes the user's travel style and preferences.
 
 PREFERENCES:
 {preferences_text}
@@ -154,17 +154,18 @@ Write a summary that:
 1. Highlights their main preferences (dietary, activities, timing, etc.)
 2. Mentions what they like and what they avoid (if any dislikes are mentioned)
 3. Is friendly and conversational
-4. Is concise (2-3 sentences max)
+4. Is at least 50 words long (aim for 3-5 sentences)
 5. If they have dietary restrictions, mention them naturally
 6. If they have specific likes/dislikes, incorporate them naturally
+7. Provides context and details about their travel personality
 
-Example format:
-"You prefer nature activities and outdoor adventures. You avoid crowded tourist spots and prefer afternoon flights. You're vegetarian and prefer mid-range accommodations."
+Example format (50+ words):
+"You have a passion for nature activities and outdoor adventures, always seeking experiences that connect you with the natural world. You prefer to avoid crowded tourist spots and instead look for quieter, more authentic destinations. When it comes to travel logistics, you tend to prefer afternoon flights that give you time to prepare. You're vegetarian and appreciate accommodations that cater to your dietary needs, typically choosing mid-range options that balance comfort and value."
 
-Another example:
-"You enjoy museums, hiking, and beaches. You prefer to avoid crowds and nightlife. You're vegan and love trying local cuisine."
+Another example (50+ words):
+"You enjoy exploring museums, hiking scenic trails, and relaxing on beautiful beaches during your travels. You have a strong preference for avoiding crowds and nightlife, instead seeking peaceful moments and cultural enrichment. You're vegan and love trying local cuisine that aligns with your dietary choices. Your travel style reflects a thoughtful approach to experiencing new places while staying true to your values and preferences."
 
-Generate the summary now:"""
+Generate the summary now (must be at least 50 words):"""
 
         try:
             client = AsyncDedalus()
@@ -182,7 +183,38 @@ Generate the summary now:"""
             # Clean up the summary (remove quotes if wrapped)
             summary = summary.strip().strip('"').strip("'")
             
-            logger.info(f"Profile summary generated successfully: {summary[:100]}...")
+            # Ensure summary is at least 50 words
+            word_count = len(summary.split())
+            logger.info(f"Initial summary word count: {word_count}")
+            
+            if word_count < 50:
+                logger.warning(f"Summary is only {word_count} words, expanding to meet 50-word minimum...")
+                # Add more context to reach 50 words
+                summary = _expand_summary(summary, all_preferences, 50 - word_count)
+                # Double-check after expansion
+                final_word_count = len(summary.split())
+                logger.info(f"After expansion word count: {final_word_count}")
+                
+                if final_word_count < 50:
+                    logger.warning(f"Summary still only {final_word_count} words after expansion, forcing to 50 words...")
+                    # Force add content to reach exactly 50 words
+                    words_needed = 50 - final_word_count
+                    filler = "This personalized approach to travel helps ensure that every trip you take reflects your unique preferences and travel style, making each journey more enjoyable and meaningful."
+                    summary += " " + filler
+                    final_word_count = len(summary.split())
+            
+            final_word_count = len(summary.split())
+            logger.info(f"Profile summary generated successfully ({final_word_count} words): {summary[:100]}...")
+            
+            # Final validation - ensure we have at least 50 words
+            if final_word_count < 50:
+                logger.error(f"Summary still below 50 words ({final_word_count}), adding minimum filler...")
+                # Emergency fallback - add enough words to reach 50
+                while len(summary.split()) < 50:
+                    summary += " Your travel preferences help create personalized and meaningful travel experiences."
+                    if len(summary.split()) > 100:  # Safety check
+                        break
+            
             return summary if summary else "Your travel preferences are being analyzed. Check back soon for your profile summary!"
         except Exception as dedalus_error:
             logger.error(f"Error calling Dedalus for profile summary: {dedalus_error}", exc_info=True)
@@ -193,6 +225,80 @@ Generate the summary now:"""
     except Exception as e:
         logger.error(f"Error generating profile summary: {e}", exc_info=True)
         return "Unable to generate profile summary at this time. Please try again later."
+
+
+def _expand_summary(summary: str, preferences: List[Dict[str, Any]], words_needed: int) -> str:
+    """Expand a summary to reach the minimum word count (50 words)"""
+    expanded = summary
+    current_word_count = len(expanded.split())
+    
+    if current_word_count >= 50:
+        return expanded
+    
+    # Add more details about preferences
+    additional_context = []
+    
+    # Count preference types
+    activity_count = sum(1 for p in preferences if p.get("category") == "activity")
+    dietary_count = sum(1 for p in preferences if p.get("category") == "dietary")
+    temporal_count = sum(1 for p in preferences if p.get("type") == "temporal")
+    
+    if activity_count > 0:
+        additional_context.append(f"Your travel interests span {activity_count} different activity categories, showing a diverse range of preferences that shape your travel experiences.")
+    
+    if dietary_count > 0:
+        additional_context.append("You pay close attention to dietary needs when planning your trips, ensuring that your food preferences are always considered.")
+    
+    if temporal_count > 0:
+        additional_context.append("You have specific timing preferences for your travels, whether it's flight times, activity schedules, or seasonal considerations.")
+    
+    # Add frequency information if available
+    high_frequency = [p for p in preferences if p.get("frequency", 1) >= 3]
+    if high_frequency:
+        additional_context.append("Some of these preferences have been consistently mentioned across multiple trips, indicating strong and well-established travel preferences.")
+    
+    # Add preference details
+    if preferences:
+        pref_categories = set(p.get("category", "") for p in preferences)
+        if pref_categories:
+            additional_context.append(f"Your preferences cover multiple aspects of travel including activities, accommodations, dining, and overall travel style.")
+    
+    # Combine with original summary
+    for context in additional_context:
+        if len(expanded.split()) < 50:
+            expanded += " " + context
+        else:
+            break
+    
+    # If still not enough words, add generic travel personality context
+    generic_contexts = [
+        "Your travel style reflects a thoughtful and personalized approach to exploring new destinations, always considering your unique preferences and values when planning your adventures.",
+        "You approach travel with careful consideration of what matters most to you, creating experiences that align with your personal travel philosophy.",
+        "Your travel preferences demonstrate a well-developed sense of what you enjoy and what you prefer to avoid, helping you create more meaningful and enjoyable trips.",
+    ]
+    
+    context_index = 0
+    while len(expanded.split()) < 50:
+        if context_index < len(generic_contexts):
+            expanded += " " + generic_contexts[context_index]
+            context_index += 1
+        else:
+            # Fallback: add a simple context
+            expanded += " Your travel style reflects a thoughtful approach to experiencing new places while staying true to your values and preferences."
+        
+        # Safety check to prevent infinite loop
+        if len(expanded.split()) > 200:
+            break
+    
+    # Final guarantee - ensure we have at least 50 words
+    final_word_count = len(expanded.split())
+    if final_word_count < 50:
+        # Add filler content to reach exactly 50 words
+        words_to_add = 50 - final_word_count
+        filler = "This personalized approach to travel helps ensure that every trip you take reflects your unique preferences and travel style, making each journey more enjoyable and meaningful."
+        expanded += " " + filler
+    
+    return expanded
 
 
 def _generate_simple_summary(preferences: List[Dict[str, Any]]) -> str:
@@ -245,7 +351,43 @@ def _generate_simple_summary(preferences: List[Dict[str, Any]]) -> str:
         parts.append(f"You're {dietary_text}.")
     
     if parts:
-        return " ".join(parts)
+        summary = " ".join(parts)
+        # Ensure summary is at least 50 words
+        word_count = len(summary.split())
+        logger.info(f"Simple summary initial word count: {word_count}")
+        
+        if word_count < 50:
+            summary = _expand_summary(summary, preferences, 50 - word_count)
+            # Double-check after expansion
+            final_word_count = len(summary.split())
+            logger.info(f"Simple summary after expansion word count: {final_word_count}")
+            
+            if final_word_count < 50:
+                logger.warning(f"Simple summary still only {final_word_count} words, forcing to 50...")
+                # Force add content to reach exactly 50 words
+                filler = "This personalized approach to travel helps ensure that every trip you take reflects your unique preferences and travel style, making each journey more enjoyable and meaningful."
+                summary += " " + filler
+                final_word_count = len(summary.split())
+                
+                # Emergency fallback if still under 50
+                while final_word_count < 50:
+                    summary += " Your travel preferences help create personalized and meaningful travel experiences."
+                    final_word_count = len(summary.split())
+                    if final_word_count > 100:  # Safety check
+                        break
+        
+        # Final validation
+        final_word_count = len(summary.split())
+        if final_word_count < 50:
+            logger.error(f"Simple summary still below 50 words ({final_word_count}), this should not happen!")
+            # Emergency: add words until we reach 50
+            while len(summary.split()) < 50:
+                summary += " Your travel style reflects thoughtful planning and personal preferences."
+                if len(summary.split()) > 100:
+                    break
+        
+        logger.info(f"Simple summary final word count: {len(summary.split())}")
+        return summary
     else:
         return "Your travel preferences are being analyzed. Check back soon for your profile summary!"
 

@@ -95,27 +95,26 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         dietary_restrictions: selectedDietary,
       })
       
-      const { data, error } = await supabase
-        .from('user_preferences')
-        .upsert({
+      // Use backend API to save preferences (bypasses RLS)
+      const response = await fetch('http://localhost:8000/user/preferences/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           user_id: userId,
           preferences: selectedPreferences,
           likes: selectedLikes,
           dislikes: selectedDislikes,
           dietary_restrictions: selectedDietary,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id'
-        })
-        .select()
+        }),
+      })
       
-      if (error) {
-        console.error('Error saving preferences:', error)
-        console.error('Error details:', JSON.stringify(error, null, 2))
-        // If RLS blocks it, we'll save it later when user logs in
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Error saving preferences:', response.status, errorText)
         return false
       }
       
+      const data = await response.json()
       console.log('Preferences saved successfully:', data)
       return true
     } catch (err: any) {
