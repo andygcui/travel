@@ -15,6 +15,11 @@ import httpx
 import json
 import re
 from .itinerary_cache import get_itinerary, get_latest_itinerary
+from .conversation_history import (
+    get_conversation_history,
+    save_conversation_message,
+    format_conversation_history_for_prompt
+)
 from dedalus_labs import AsyncDedalus, DedalusRunner
 
 logger = logging.getLogger(__name__)
@@ -132,7 +137,15 @@ class SustainabilityAssistant:
                 return await self._handle_directions(text, user_id, context)
             else:
                 # Use Dedalus for all other responses
-                return await self._generate_llm_response(text, intent, itinerary, user_id)
+                # Extract trip_id from context or itinerary
+                trip_id = None
+                if context:
+                    trip_id = context.get("trip_id")
+                if not trip_id and itinerary:
+                    # Try to get trip_id from itinerary if it's a saved trip
+                    trip_id = itinerary.get("trip_id") or itinerary.get("id")
+                
+                return await self._generate_llm_response(text, intent, itinerary, user_id, trip_id)
         except Exception as e:
             logger.error(f"Error handling query: {e}", exc_info=True)
             return {
@@ -172,7 +185,8 @@ class SustainabilityAssistant:
         text: str,
         intent: str,
         itinerary: Optional[Dict[str, Any]],
-        user_id: Optional[str]
+        user_id: Optional[str],
+        trip_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate a natural language response using Dedalus"""
         
@@ -382,6 +396,17 @@ Eco Score: {eco_score}/100
             except Exception as e:
                 logger.warning(f"Could not serialize itinerary to JSON: {e}")
         
+        # Get conversation history if we have a trip_id
+        conversation_history = ""
+        if trip_id and user_id:
+            try:
+                conversations = await get_conversation_history(trip_id, limit=10)
+                if conversations:
+                    conversation_history = format_conversation_history_for_prompt(conversations)
+                    logger.info(f"Including {len(conversations)} previous messages in prompt for trip {trip_id}")
+            except Exception as e:
+                logger.warning(f"Error retrieving conversation history: {e}")
+        
         # Build the prompt for Dedalus
         prompt = f"""You are a helpful travel assistant for a sustainable travel planning app. A user is asking you about their trip via text message.
 
@@ -390,6 +415,7 @@ USER QUESTION: "{text}"
 DETECTED INTENT: {intent}
 
 {itinerary_context}
+{conversation_history}
 
 INSTRUCTIONS:
 1. Provide a natural, conversational response to the user's question
@@ -459,11 +485,26 @@ Generate a helpful, natural response with good spacing and formatting:"""
                             if maps_links.get("google_maps"):
                                 response_text += f"\nGoogle Maps: {maps_links['google_maps']}"
             
-            return {
+            response_dict = {
                 "type": "message",
                 "text": response_text,
                 "buttons": buttons
             }
+            
+            # Save conversation history if we have trip_id and user_id
+            if trip_id and user_id:
+                try:
+                    await save_conversation_message(
+                        trip_id=trip_id,
+                        user_id=user_id,
+                        user_message=text,
+                        assistant_response=response_text
+                    )
+                    logger.info(f"Saved conversation message for trip {trip_id}")
+                except Exception as e:
+                    logger.warning(f"Error saving conversation history: {e}")
+            
+            return response_dict
             
         except Exception as e:
             logger.error(f"Error calling Dedalus: {e}", exc_info=True)

@@ -79,6 +79,14 @@ async def handle_photon_message(request: PhotonMessageRequest):
                 context["itinerary"] = latest_itinerary
                 logger.info("Auto-loaded latest itinerary from cache")
         
+        # Extract trip_id from itinerary if available (for conversation history)
+        if context.get("itinerary") and not context.get("trip_id"):
+            itinerary = context["itinerary"]
+            trip_id = itinerary.get("trip_id") or itinerary.get("id")
+            if trip_id:
+                context["trip_id"] = trip_id
+                logger.info(f"Extracted trip_id {trip_id} from itinerary")
+        
         # Handle the query
         response = await assistant.handle_query(
             text=request.text,

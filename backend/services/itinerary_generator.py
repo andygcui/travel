@@ -179,39 +179,8 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
                 hotel.emissions_kg = climatiq_service.estimate_hotel_emissions_fallback(
                     trip_days
                 ) / trip_days
-    logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for flights and hotels")
-    for flight in flights:
-        if not flight.emissions_kg:
-            logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for flight {flight.origin}->{flight.destination}")
-            emissions = await climatiq_service.estimate_flight_emissions(
-                origin=origin_code,
-                destination=destination_code,
-                passengers=1,
-            )
-            if emissions:
-                # Subtract 500 from emissions (minimum 0)
-                flight.emissions_kg = max(0, emissions - 500)
-            else:
-                logger.warning(f"[T+{time.time()-t0:.2f}s] Climatiq failed, using fallback for flight {flight.origin}->{flight.destination}")
-                fallback_emissions = climatiq_service.estimate_flight_emissions_fallback(
-                    origin_code, destination_code, 1
-                )
-                # Subtract 500 from fallback emissions (minimum 0)
-                flight.emissions_kg = max(0, fallback_emissions - 500)
     
-    for hotel in hotels:
-        if not hotel.emissions_kg:
-            logger.info(f"[T+{time.time()-t0:.2f}s] Estimating emissions for hotel")
-            emissions = await climatiq_service.estimate_hotel_emissions(
-                nights=trip_days,
-            )
-            if emissions:
-                hotel.emissions_kg = emissions / trip_days  # Per night
-            else:
-                logger.warning(f"[T+{time.time()-t0:.2f}s] Climatiq failed, using fallback for hotel")
-                hotel.emissions_kg = climatiq_service.estimate_hotel_emissions_fallback(
-                    trip_days
-                ) / trip_days
+    logger.info(f"[T+{time.time()-t0:.2f}s] Finished estimating emissions for flights and hotels")
     
     # Step 5: Build prompt and call Dedalus
     logger.info("Building Dedalus prompt...")

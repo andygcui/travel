@@ -219,9 +219,10 @@ async def fetch_place_details_for_lodging(
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         for text_query in queries:
+            # Note: includedTypes is not valid for searchText, only for searchNearby
+            # Add "hotel" or "lodging" to the text query instead
             request_body = {
-                "textQuery": text_query,
-                "includedTypes": ["lodging"],
+                "textQuery": f"{text_query} hotel",
             }
 
             if latitude is not None and longitude is not None:
