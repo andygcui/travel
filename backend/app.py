@@ -224,6 +224,21 @@ class DeleteAccountRequest(BaseModel):
     user_id: str
 
 
+class AddFriendRequest(BaseModel):
+    user_id: str
+    friend_email: str
+
+
+class AcceptFriendRequest(BaseModel):
+    user_id: str
+    friendship_id: str
+
+
+class RemoveFriendRequest(BaseModel):
+    user_id: str
+    friend_id: str
+
+
 @app.delete("/user/account")
 async def delete_user_account(request: DeleteAccountRequest):
     """Delete a user account and all associated data"""
@@ -291,4 +306,218 @@ async def delete_user_account(request: DeleteAccountRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting account: {str(e)}")
+
+
+@app.post("/friends/add")
+async def add_friend(request: AddFriendRequest):
+    """Send a friend request by email"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Find user by email
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not service_role_key:
+            raise HTTPException(status_code=500, detail="Supabase service role key not configured")
+        
+        # Get user by email using admin API
+        admin_url = f"{supabase_url}/auth/v1/admin/users"
+        headers = {
+            "apikey": service_role_key,
+            "Authorization": f"Bearer {service_role_key}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.get(f"{admin_url}?email={request.friend_email}", headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        users = response.json()
+        if not users or len(users.get("users", [])) == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        friend_user = users["users"][0]
+        friend_id = friend_user["id"]
+        
+        # Check if already friends or request exists
+        existing = supabase.table("friendships").select("*").or_(
+            f"user_id.eq.{request.user_id},friend_id.eq.{request.user_id}"
+        ).or_(
+            f"user_id.eq.{friend_id},friend_id.eq.{friend_id}"
+        ).execute()
+        
+        for friendship in existing.data:
+            if (friendship["user_id"] == request.user_id and friendship["friend_id"] == friend_id) or \
+               (friendship["user_id"] == friend_id and friendship["friend_id"] == request.user_id):
+                if friendship["status"] == "accepted":
+                    raise HTTPException(status_code=400, detail="Already friends")
+                elif friendship["status"] == "pending":
+                    raise HTTPException(status_code=400, detail="Friend request already sent")
+                elif friendship["status"] == "blocked":
+                    raise HTTPException(status_code=400, detail="Cannot add this user")
+        
+        # Create friend request
+        result = supabase.table("friendships").insert({
+            "user_id": request.user_id,
+            "friend_id": friend_id,
+            "status": "pending"
+        }).execute()
+        
+        logger.info(f"Friend request sent from {request.user_id} to {friend_id}")
+        return {"message": "Friend request sent", "friendship": result.data[0] if result.data else None}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding friend: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error adding friend: {str(e)}")
+
+
+@app.get("/friends/list")
+async def get_friends(user_id: str):
+    """Get list of friends (accepted friendships)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get all accepted friendships where user is involved
+        friendships = supabase.table("friendships").select("*").or_(
+            f"user_id.eq.{user_id},friend_id.eq.{user_id}"
+        ).eq("status", "accepted").execute()
+        
+        friends = []
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and service_role_key:
+            admin_url = f"{supabase_url}/auth/v1/admin/users"
+            headers = {
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            }
+            
+            for friendship in friendships.data:
+                other_user_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+                try:
+                    response = requests.get(f"{admin_url}/{other_user_id}", headers=headers)
+                    if response.status_code == 200:
+                        friend_user = response.json()
+                        friends.append({
+                            "friendship_id": friendship["id"],
+                            "friend_id": other_user_id,
+                            "email": friend_user.get("email", ""),
+                            "created_at": friendship["created_at"]
+                        })
+                except Exception as e:
+                    logger.warning(f"Error fetching friend user {other_user_id}: {e}")
+        
+        return {"friends": friends}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting friends: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting friends: {str(e)}")
+
+
+@app.get("/friends/pending")
+async def get_pending_requests(user_id: str):
+    """Get pending friend requests (received)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get pending requests where user is the friend (receiver)
+        friendships = supabase.table("friendships").select("*").eq(
+            "friend_id", user_id
+        ).eq("status", "pending").execute()
+        
+        requests = []
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and service_role_key:
+            admin_url = f"{supabase_url}/auth/v1/admin/users"
+            headers = {
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            }
+            
+            for friendship in friendships.data:
+                try:
+                    response = requests.get(f"{admin_url}/{friendship['user_id']}", headers=headers)
+                    if response.status_code == 200:
+                        requester = response.json()
+                        requests.append({
+                            "friendship_id": friendship["id"],
+                            "requester_id": friendship["user_id"],
+                            "email": requester.get("email", ""),
+                            "created_at": friendship["created_at"]
+                        })
+                except Exception as e:
+                    logger.warning(f"Error fetching requester {friendship['user_id']}: {e}")
+        
+        return {"pending_requests": requests}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting pending requests: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting pending requests: {str(e)}")
+
+
+@app.post("/friends/accept")
+async def accept_friend_request(request: AcceptFriendRequest):
+    """Accept a friend request"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Update friendship status to accepted
+        result = supabase.table("friendships").update({
+            "status": "accepted"
+        }).eq("id", request.friendship_id).eq("friend_id", request.user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Friend request not found")
+        
+        logger.info(f"Friend request {request.friendship_id} accepted by {request.user_id}")
+        return {"message": "Friend request accepted", "friendship": result.data[0]}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error accepting friend request: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error accepting friend request: {str(e)}")
+
+
+@app.post("/friends/remove")
+async def remove_friend(request: RemoveFriendRequest):
+    """Remove a friend (delete friendship)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Delete friendship (either direction)
+        result = supabase.table("friendships").delete().or_(
+            f"user_id.eq.{request.user_id},friend_id.eq.{request.user_id}"
+        ).or_(
+            f"user_id.eq.{request.friend_id},friend_id.eq.{request.friend_id}"
+        ).execute()
+        
+        logger.info(f"Friendship removed between {request.user_id} and {request.friend_id}")
+        return {"message": "Friend removed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing friend: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error removing friend: {str(e)}")
 
