@@ -233,6 +233,10 @@ export default function Home() {
         }
       }
 
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+
       const response = await fetch("http://localhost:8000/generate_itinerary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,7 +253,10 @@ export default function Home() {
           dietary_restrictions: dietaryRestrictions,
           mode,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Failed to generate itinerary" }));
@@ -268,7 +275,13 @@ export default function Home() {
       }));
       router.push("/results");
     } catch (err: any) {
-      setError(err.message || "Unable to reach GreenTrip backend. Make sure it is running.");
+      if (err.name === 'AbortError') {
+        setError("Request timed out. The itinerary generation is taking longer than expected. Please try again.");
+      } else if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        setError("Unable to reach the backend server. Please make sure the backend is running on http://localhost:8000");
+      } else {
+        setError(err.message || "Unable to reach GreenTrip backend. Make sure it is running.");
+      }
     } finally {
       setLoading(false);
     }
