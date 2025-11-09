@@ -44,9 +44,6 @@ export default function Dashboard() {
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
-  const [friendEmail, setFriendEmail] = useState("");
-  const [addingFriend, setAddingFriend] = useState(false);
   const previousPreferencesRef = useRef<string>("");
   const previousRegistrationPrefsRef = useRef<string>("");
   const previousProfileSummaryRef = useRef<string>("");
@@ -132,85 +129,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleAddFriend = async () => {
-    if (!user || !friendEmail.trim()) return;
-    setAddingFriend(true);
-    try {
-      const response = await fetch("http://localhost:8000/friends/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          friend_email: friendEmail.trim(),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Failed to add friend" }));
-        throw new Error(errorData.detail || "Failed to add friend");
-      }
-
-      setFriendEmail("");
-      setShowAddFriend(false);
-      alert("Friend request sent!");
-      loadPendingRequests();
-    } catch (err: any) {
-      console.error("Error adding friend:", err);
-      alert(`Failed to add friend: ${err.message}`);
-    } finally {
-      setAddingFriend(false);
-    }
-  };
-
-  const handleAcceptRequest = async (friendshipId: string) => {
-    if (!user) return;
-    try {
-      const response = await fetch("http://localhost:8000/friends/accept", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          friendship_id: friendshipId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to accept friend request");
-      }
-
-      loadFriends();
-      loadPendingRequests();
-    } catch (err) {
-      console.error("Error accepting friend request:", err);
-      alert("Failed to accept friend request");
-    }
-  };
-
-  const handleRemoveFriend = async (friendId: string) => {
-    if (!user) return;
-    if (!confirm("Are you sure you want to remove this friend?")) return;
-
-    try {
-      const response = await fetch("http://localhost:8000/friends/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          friend_id: friendId,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to remove friend");
-      }
-
-      loadFriends();
-      loadPendingRequests();
-    } catch (err) {
-      console.error("Error removing friend:", err);
-      alert("Failed to remove friend");
-    }
-  };
 
   const loadProfile = async (userId: string, forceReload: boolean = false) => {
     // Load cached preferences from localStorage
@@ -623,6 +541,12 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-4">
               <Link
+                href="/friends"
+                className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+              >
+                👥 Friends
+              </Link>
+              <Link
                 href="/emissions"
                 className="rounded-full border border-emerald-200 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
@@ -961,85 +885,30 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Friends Section */}
+          {/* Friends Quick Link */}
           <div className="mb-8 rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-emerald-900">Friends</h2>
-              <button
-                onClick={() => setShowAddFriend(true)}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-emerald-900">Friends</h2>
+                <p className="mt-1 text-sm text-emerald-700">
+                  {pendingRequests.length > 0 && (
+                    <span className="font-medium text-emerald-600">
+                      {pendingRequests.length} pending request{pendingRequests.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {pendingRequests.length === 0 && friends.length > 0 && (
+                    <span>{friends.length} friend{friends.length > 1 ? "s" : ""}</span>
+                  )}
+                  {pendingRequests.length === 0 && friends.length === 0 && <span>No friends yet</span>}
+                </p>
+              </div>
+              <Link
+                href="/friends"
                 className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
               >
-                + Add Friend
-              </button>
+                Manage Friends →
+              </Link>
             </div>
-
-            {/* Pending Friend Requests */}
-            {pendingRequests.length > 0 && (
-              <div className="mb-6">
-                <h3 className="mb-3 text-sm font-semibold text-emerald-700">Pending Requests</h3>
-                <div className="space-y-2">
-                  {pendingRequests.map((request) => (
-                    <div
-                      key={request.friendship_id}
-                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
-                    >
-                      <div>
-                        <p className="font-medium text-emerald-900">{request.email}</p>
-                        <p className="text-xs text-emerald-600">
-                          Sent {new Date(request.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleAcceptRequest(request.friendship_id)}
-                          className="rounded-lg bg-emerald-500 px-3 py-1 text-xs font-medium text-white transition hover:bg-emerald-600"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => handleRemoveFriend(request.requester_id)}
-                          className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Friends List */}
-            {loadingFriends ? (
-              <p className="text-emerald-700">Loading friends...</p>
-            ) : friends.length > 0 ? (
-              <div>
-                <h3 className="mb-3 text-sm font-semibold text-emerald-700">Your Friends ({friends.length})</h3>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {friends.map((friend) => (
-                    <div
-                      key={friend.friendship_id}
-                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
-                    >
-                      <div>
-                        <p className="font-medium text-emerald-900">{friend.email}</p>
-                        <p className="text-xs text-emerald-600">
-                          Friends since {new Date(friend.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveFriend(friend.friend_id)}
-                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-emerald-700 italic">No friends yet. Add friends by email to get started!</p>
-            )}
           </div>
         </main>
       </div>
@@ -1056,66 +925,6 @@ export default function Dashboard() {
           }}
           onClose={() => setShowPreferencesChat(false)}
         />
-      )}
-
-      {/* Add Friend Modal */}
-      {showAddFriend && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
-            <button
-              onClick={() => {
-                setShowAddFriend(false);
-                setFriendEmail("");
-              }}
-              disabled={addingFriend}
-              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-            >
-              ✕
-            </button>
-
-            <h2 className="mb-4 text-2xl font-bold text-emerald-900">Add Friend</h2>
-            <p className="mb-6 text-sm text-emerald-700">
-              Enter your friend's email address to send them a friend request.
-            </p>
-
-            <div className="mb-6">
-              <label className="mb-2 block text-sm font-semibold text-emerald-900">Email Address</label>
-              <input
-                type="email"
-                value={friendEmail}
-                onChange={(e) => setFriendEmail(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && friendEmail.trim()) {
-                    handleAddFriend();
-                  }
-                }}
-                placeholder="friend@example.com"
-                disabled={addingFriend}
-                className="w-full rounded-lg border border-emerald-200 px-4 py-2 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-50"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowAddFriend(false);
-                  setFriendEmail("");
-                }}
-                disabled={addingFriend}
-                className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddFriend}
-                disabled={addingFriend || !friendEmail.trim()}
-                className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {addingFriend ? "Sending..." : "Send Request"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Edit Registration Preferences Modal */}

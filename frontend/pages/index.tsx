@@ -305,6 +305,12 @@ export default function Home() {
               {user ? (
                 <>
                   <a
+                    href="/friends"
+                    className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
+                  >
+                    👥 Friends
+                  </a>
+                  <a
                     href="/dashboard"
                     className="rounded-full px-4 py-2 text-sm font-medium text-white transition hover:text-[#3cb371]"
                   >

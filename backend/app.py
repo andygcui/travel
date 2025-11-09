@@ -226,7 +226,8 @@ class DeleteAccountRequest(BaseModel):
 
 class AddFriendRequest(BaseModel):
     user_id: str
-    friend_email: str
+    friend_email: Optional[str] = None
+    friend_username: Optional[str] = None
 
 
 class AcceptFriendRequest(BaseModel):
@@ -310,20 +311,21 @@ async def delete_user_account(request: DeleteAccountRequest):
 
 @app.post("/friends/add")
 async def add_friend(request: AddFriendRequest):
-    """Send a friend request by email"""
+    """Send a friend request by email or username"""
     try:
         supabase = get_supabase_client()
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
         
-        # Find user by email
+        if not request.friend_email and not request.friend_username:
+            raise HTTPException(status_code=400, detail="Either email or username must be provided")
+        
         supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
         service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
         if not supabase_url or not service_role_key:
             raise HTTPException(status_code=500, detail="Supabase service role key not configured")
         
-        # Get user by email using admin API
         admin_url = f"{supabase_url}/auth/v1/admin/users"
         headers = {
             "apikey": service_role_key,
@@ -331,16 +333,28 @@ async def add_friend(request: AddFriendRequest):
             "Content-Type": "application/json"
         }
         
-        response = requests.get(f"{admin_url}?email={request.friend_email}", headers=headers)
-        if response.status_code != 200:
-            raise HTTPException(status_code=404, detail="User not found")
+        friend_id = None
         
-        users = response.json()
-        if not users or len(users.get("users", [])) == 0:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Try to find by username first
+        if request.friend_username:
+            username_result = supabase.table("user_preferences").select("user_id").eq(
+                "username", request.friend_username
+            ).execute()
+            
+            if username_result.data and len(username_result.data) > 0:
+                friend_id = username_result.data[0]["user_id"]
         
-        friend_user = users["users"][0]
-        friend_id = friend_user["id"]
+        # If not found by username, try email
+        if not friend_id and request.friend_email:
+            response = requests.get(f"{admin_url}?email={request.friend_email}", headers=headers)
+            if response.status_code == 200:
+                users = response.json()
+                if users and len(users.get("users", [])) > 0:
+                    friend_user = users["users"][0]
+                    friend_id = friend_user["id"]
+        
+        if not friend_id:
+            raise HTTPException(status_code=404, detail="User not found")
         
         # Check if already friends or request exists
         existing = supabase.table("friendships").select("*").or_(
