@@ -1659,53 +1659,62 @@ export default function Results() {
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-emerald-50">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white/70 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-12">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 md:px-12">
           <button
             onClick={() => router.push("/")}
             className="text-2xl font-semibold text-gray-900 transition hover:text-gray-700"
           >
             GreenTrip
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {user && (
               <>
                 <Link
                   href="/friends"
-                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                 >
                   Leaderboard
                 </Link>
                 <Link
                   href="/dashboard"
-                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50"
+                  className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500"
                 >
                   Profile
                 </Link>
                 <button
                   onClick={regenerateItinerary}
                   disabled={checkingPreferences}
-                  className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-sm font-medium text-emerald-700 transition hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-emerald-300"
                   title="Regenerate itinerary with all collaborators' preferences"
                 >
-                  {checkingPreferences ? "🔄 Regenerating..." : "🔄 Refresh"}
+                  {checkingPreferences ? "Regenerating..." : "Refresh"}
                 </button>
                 {savedTripId && (
                   <>
                     {/* Trip Status Progress Tags */}
-                    <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white/60 px-3 py-1.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-700">
+                      <span>Status:</span>
                       {tripStatus === "draft" ? (
-                        <span className="text-xs font-medium text-gray-500">📝 Draft</span>
+                        <span className="text-gray-500">Draft</span>
                       ) : (
                         <>
-                          <span className={`text-xs font-medium ${tripStatus === "before" ? "text-emerald-700" : "text-emerald-500"}`}>
+                          <span className={tripStatus === "before" ? "text-emerald-700" : "text-emerald-500"}>
                             {tripStatus === "before" ? "●" : "✓"} Before
                           </span>
-                          <span className="text-emerald-300">|</span>
-                          <span className={`text-xs font-medium ${tripStatus === "during" ? "text-emerald-700" : tripStatus === "after" ? "text-emerald-500" : "text-gray-400"}`}>
+                          <span className="text-emerald-300">/</span>
+                          <span
+                            className={
+                              tripStatus === "during"
+                                ? "text-emerald-700"
+                                : tripStatus === "after"
+                                ? "text-emerald-500"
+                                : "text-gray-400"
+                            }
+                          >
                             {tripStatus === "during" ? "●" : tripStatus === "after" ? "✓" : "○"} During
                           </span>
-                          <span className="text-emerald-300">|</span>
-                          <span className={`text-xs font-medium ${tripStatus === "after" ? "text-emerald-700" : "text-gray-400"}`}>
+                          <span className="text-emerald-300">/</span>
+                          <span className={tripStatus === "after" ? "text-emerald-700" : "text-gray-400"}>
                             {tripStatus === "after" ? "●" : "○"} After
                           </span>
                         </>
@@ -1717,12 +1726,10 @@ export default function Results() {
                       <button
                         onClick={() => setShowStatusMenu(!showStatusMenu)}
                         disabled={updatingStatus}
-                        className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        className={`text-sm font-medium transition disabled:cursor-not-allowed disabled:text-emerald-300 ${
                           tripStatus === "after"
-                            ? "bg-emerald-600 text-white"
-                            : tripStatus === "draft"
-                            ? "border border-gray-300 bg-white/60 text-gray-600 hover:border-emerald-300 hover:text-emerald-700"
-                            : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50"
+                            ? "text-emerald-700"
+                            : "text-emerald-700 hover:text-emerald-500"
                         }`}
                         title="Change trip status"
                       >
@@ -1743,16 +1750,16 @@ export default function Results() {
                             className="fixed inset-0 z-10"
                             onClick={() => setShowStatusMenu(false)}
                           />
-                          <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-lg border border-emerald-200 bg-white shadow-lg">
-                            <div className="py-1">
+                          <div className="absolute right-0 top-full z-20 mt-2 w-48 rounded-lg bg-white shadow-lg ring-1 ring-slate-200">
+                            <div className="py-1 text-sm text-gray-700">
                               <button
                                 onClick={() => {
                                   handleUpdateTripStatus("draft");
                                   setShowStatusMenu(false);
                                 }}
                                 disabled={updatingStatus}
-                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
-                                  tripStatus === "draft" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                className={`w-full px-4 py-2 text-left transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "draft" ? "font-semibold text-emerald-700" : ""
                                 }`}
                               >
                                 📝 Draft {tripStatus === "draft" && "●"}
@@ -1763,8 +1770,8 @@ export default function Results() {
                                   setShowStatusMenu(false);
                                 }}
                                 disabled={updatingStatus}
-                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
-                                  tripStatus === "before" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                className={`w-full px-4 py-2 text-left transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "before" ? "font-semibold text-emerald-700" : ""
                                 }`}
                               >
                                 ✈️ Before {tripStatus === "before" && "●"}
@@ -1775,8 +1782,8 @@ export default function Results() {
                                   setShowStatusMenu(false);
                                 }}
                                 disabled={updatingStatus || !confirmedCabinId}
-                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
-                                  tripStatus === "during" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                className={`w-full px-4 py-2 text-left transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "during" ? "font-semibold text-emerald-700" : ""
                                 }`}
                                 title={!confirmedCabinId ? "Please select a flight option first" : ""}
                               >
@@ -1788,8 +1795,8 @@ export default function Results() {
                                   setShowStatusMenu(false);
                                 }}
                                 disabled={updatingStatus || !confirmedCabinId}
-                                className={`w-full px-4 py-2 text-left text-sm transition hover:bg-emerald-50 disabled:opacity-50 ${
-                                  tripStatus === "after" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-gray-700"
+                                className={`w-full px-4 py-2 text-left transition hover:bg-emerald-50 disabled:opacity-50 ${
+                                  tripStatus === "after" ? "font-semibold text-emerald-700" : ""
                                 }`}
                                 title={!confirmedCabinId ? "Please select a flight option first" : ""}
                               >
@@ -1819,14 +1826,12 @@ export default function Results() {
                         }
                       }}
                       disabled={sharingTrip}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        (itinerary as any)?.shared
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                          : "border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                      className={`text-sm font-medium transition disabled:cursor-not-allowed disabled:text-emerald-300 ${
+                        (itinerary as any)?.shared ? "text-emerald-600" : "text-emerald-700 hover:text-emerald-500"
                       }`}
                       title="Share trip"
                     >
-                      {sharingTrip ? "Sharing..." : (itinerary as any)?.shared ? "✓ Shared" : "🔗 Share"}
+                      {sharingTrip ? "Sharing..." : (itinerary as any)?.shared ? "Shared" : "Share"}
                     </button>
                   </>
                 )}
@@ -1834,15 +1839,15 @@ export default function Results() {
                   <button
                     onClick={handleUnsaveTrip}
                     disabled={saving}
-                    className="rounded-full px-4 py-2 text-sm font-medium transition bg-emerald-500 text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="text-sm font-semibold text-emerald-700 transition hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-emerald-300"
                   >
-                    {saving ? "Removing…" : "Saved ✓"}
+                    {saving ? "Removing…" : "Saved"}
                   </button>
                 ) : (
                   <button
                     onClick={handleSaveTrip}
                     disabled={saving}
-                    className="rounded-full px-4 py-2 text-sm font-medium transition border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="text-sm font-semibold text-emerald-700 transition hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-emerald-300"
                   >
                     {saving ? "Saving…" : "Save"}
                   </button>
