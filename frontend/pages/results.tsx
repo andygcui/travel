@@ -577,9 +577,24 @@ export default function Results() {
 
   // Get non-selected preference categories for "Explore More Options"
   const exploreMoreOptions = useMemo(() => {
-    if (!itinerary || !itinerary.attractions) return [];
-    return itinerary.attractions.slice(0, 6);
-  }, [itinerary]);
+    if (!itinerary || !itinerary.attractions || !itinerary.days || !itinerary.day_attractions) return [];
+    // Get the current day number safely
+    const currentDayNumber = itinerary.days[currentDayIndex]?.day;
+    if (currentDayNumber === undefined) return itinerary.attractions.slice(0, 6);
+    // Get names of planned POIs for the current day
+    const plannedNames = new Set<string>();
+    const bundle = itinerary.day_attractions.find((b) => b.day === currentDayNumber);
+    if (bundle) {
+      [bundle.morning, bundle.afternoon, bundle.evening].forEach((poi) => {
+        if (poi && poi.name) plannedNames.add(normalizePlaceName(poi.name));
+      });
+    }
+    // Filter out planned POIs
+    const unplanned = itinerary.attractions.filter(
+      (poi) => poi.name && !plannedNames.has(normalizePlaceName(poi.name))
+    );
+    return unplanned.slice(0, 6);
+  }, [itinerary, currentDayIndex]);
 
   // GSAP Animations
   useEffect(() => {
