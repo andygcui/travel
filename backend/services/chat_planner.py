@@ -27,7 +27,8 @@ async def chat_planner(
     message: str, 
     current_itinerary: Dict[str, Any],
     user_id: Optional[str] = None,
-    trip_id: Optional[str] = None
+    trip_id: Optional[str] = None,
+    collaborator_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Handle chat messages to modify itinerary.
@@ -37,6 +38,7 @@ async def chat_planner(
         current_itinerary: Current itinerary data
         user_id: Optional user ID for preference extraction
         trip_id: Optional trip ID if modifying a saved trip
+        collaborator_id: Optional collaborator user ID (for shared trips, combines preferences)
     
     Returns:
         Dict with 'response' (chat response), 'updated_itinerary' (optional), and 'extracted_preferences' (optional)
@@ -57,6 +59,42 @@ async def chat_planner(
             except Exception as e:
                 logger.warning(f"Failed to extract preferences: {e}", exc_info=True)
                 # Continue even if preference extraction fails
+        
+        # Combine preferences from both users if collaborating
+        combined_preferences = current_itinerary.get("preferences", [])
+        combined_likes = current_itinerary.get("likes", [])
+        combined_dislikes = current_itinerary.get("dislikes", [])
+        combined_dietary = current_itinerary.get("dietary_restrictions", [])
+        
+        if collaborator_id:
+            try:
+                supabase = get_supabase_client()
+                if supabase:
+                    # Get collaborator's registration preferences
+                    collaborator_prefs = supabase.table("user_preferences").select("*").eq(
+                        "user_id", collaborator_id
+                    ).execute()
+                    
+                    if collaborator_prefs.data and len(collaborator_prefs.data) > 0:
+                        collab_prefs = collaborator_prefs.data[0]
+                        
+                        # Combine preferences (union, no duplicates)
+                        collab_prefs_list = collab_prefs.get("preferences", [])
+                        combined_preferences = list(set(combined_preferences + collab_prefs_list))
+                        
+                        collab_likes = collab_prefs.get("likes", [])
+                        combined_likes = list(set(combined_likes + collab_likes))
+                        
+                        collab_dislikes = collab_prefs.get("dislikes", [])
+                        combined_dislikes = list(set(combined_dislikes + collab_dislikes))
+                        
+                        collab_dietary = collab_prefs.get("dietary_restrictions", [])
+                        combined_dietary = list(set(combined_dietary + collab_dietary))
+                        
+                        logger.info(f"Combined preferences from owner and collaborator: {collaborator_id}")
+            except Exception as e:
+                logger.warning(f"Failed to combine collaborator preferences: {e}", exc_info=True)
+                # Continue with owner's preferences only
         # Extract key information from current itinerary
         destination = current_itinerary.get("destination", "")
         start_date_str = current_itinerary.get("start_date")
@@ -158,7 +196,7 @@ Respond in a natural, helpful way. If you need to regenerate the itinerary, say 
                 destination=destination,
                 latitude=latitude,
                 longitude=longitude,
-                preferences=current_itinerary.get("preferences", []),
+                preferences=combined_preferences,
                 limit=5,
             )
             
@@ -173,21 +211,25 @@ Respond in a natural, helpful way. If you need to regenerate the itinerary, say 
                     if emissions:
                         flight.emissions_kg = emissions
             
-            # Build prompt with modifications
+            # Build prompt with modifications using combined preferences
             prompt = prompt_builder.build_dedalus_prompt(
                 destination=destination,
                 num_days=num_days,
                 budget=budget,
-                preferences=current_itinerary.get("preferences", []),
+                preferences=combined_preferences,
                 mode=mode,
                 flights=flights,
                 hotels=hotels,
                 attractions=attractions,
                 weather=weather_daily,
-                likes=current_itinerary.get("likes", []),
-                dislikes=current_itinerary.get("dislikes", []),
-                dietary_restrictions=current_itinerary.get("dietary_restrictions", []),
+                likes=combined_likes,
+                dislikes=combined_dislikes,
+                dietary_restrictions=combined_dietary,
             )
+            
+            # Add note about collaboration if applicable
+            if collaborator_id:
+                prompt += "\n\nNOTE: This trip is being planned collaboratively. The preferences above combine preferences from both the trip owner and collaborator."
             
             # Add modification instructions
             prompt += f"\n\nIMPORTANT MODIFICATIONS REQUESTED BY USER:\n{message}\n\nPlease incorporate these changes into the itinerary."

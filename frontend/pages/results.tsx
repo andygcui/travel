@@ -263,10 +263,16 @@ export default function Results() {
   const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
   const [selectedCabinId, setSelectedCabinId] = useState<string | null>(null);
   const [confirmedCabinId, setConfirmedCabinId] = useState<string | null>(null);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharingTrip, setSharingTrip] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("itinerary");
     const storedRequest = sessionStorage.getItem("tripRequest"); // Get preferences from request
+    const collaboratorId = sessionStorage.getItem("collaborator_id"); // Get collaborator ID for shared trips
+    const storedTripId = sessionStorage.getItem("savedTripId"); // Check if trip ID is stored
     if (stored) {
       const parsed: ItineraryResponse = JSON.parse(stored);
       
@@ -280,6 +286,18 @@ export default function Results() {
         }
       }
       
+      // Store collaborator_id in itinerary for ChatPlanner to use
+      if (collaboratorId) {
+        (parsed as any).collaborator_id = collaboratorId;
+      }
+      
+      // Check if trip has an ID (from saved trip) or if storedTripId exists
+      if (storedTripId || (parsed as any).trip_id || (parsed as any).id) {
+        const tripId = storedTripId || (parsed as any).trip_id || (parsed as any).id;
+        setSavedTripId(tripId);
+        setSaved(true);
+      }
+      
       setItinerary(parsed);
       setCurrentDayIndex(0);
       setTripName(`${parsed.destination} - ${parsed.start_date || new Date().toLocaleDateString()}`);
@@ -289,12 +307,81 @@ export default function Results() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        loadFriends(session.user.id);
+      }
     });
 
     supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        loadFriends(session.user.id);
+      }
     });
   }, [router]);
+
+  const loadFriends = async (userId: string) => {
+    if (!userId) return;
+    setLoadingFriends(true);
+    try {
+      const response = await fetch(`http://localhost:8000/friends/list?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFriends(data.friends || []);
+      }
+    } catch (err: any) {
+      console.error("Error loading friends:", err);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const handleShareTrip = async (friendId: string, canEdit: boolean = true) => {
+    if (!user || !savedTripId) {
+      alert("Please save the trip first before sharing");
+      return;
+    }
+    
+    setSharingTrip(true);
+    try {
+      const response = await fetch("http://localhost:8000/trips/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: savedTripId,
+          owner_id: user.id,
+          friend_id: friendId,
+          can_edit: canEdit,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to share trip" }));
+        throw new Error(errorData.detail || "Failed to share trip");
+      }
+      
+      // Update itinerary to reflect it's shared - this triggers a re-render
+      if (itinerary) {
+        setItinerary({
+          ...itinerary,
+          shared: true,
+          shared_with: friendId,
+        } as any);
+      }
+      
+      // Reload friends list to get updated data
+      if (user) {
+        await loadFriends(user.id);
+      }
+      
+      alert("Trip shared successfully!");
+      setShowShareModal(false);
+    } catch (err: any) {
+      alert(`Failed to share trip: ${err.message}`);
+    } finally {
+      setSharingTrip(false);
+    }
+  };
 
   useEffect(() => {
     setSelectedCabinId(null);
@@ -756,17 +843,33 @@ export default function Results() {
             </button>
             <div className="flex items-center gap-3">
               {user && (
-                <button
-                  onClick={handleSaveTrip}
-                  disabled={saving || saved}
-                  className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                    saved
-                      ? "bg-emerald-500 text-white"
-                      : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
-          </button>
+                <>
+                  {savedTripId && (
+                    <button
+                      onClick={() => setShowShareModal(true)}
+                      disabled={sharingTrip}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        (itinerary as any)?.shared
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                          : "border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                      }`}
+                      title="Share trip"
+                    >
+                      {sharingTrip ? "Sharing..." : (itinerary as any)?.shared ? "✓ Shared" : "🔗 Share"}
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSaveTrip}
+                    disabled={saving || saved}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                      saved
+                        ? "bg-emerald-500 text-white"
+                        : "border border-emerald-200 bg-white/60 text-emerald-700 hover:border-emerald-300"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {saved ? "✓ Saved!" : saving ? "Saving..." : "💾 Save"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1378,7 +1481,68 @@ export default function Results() {
             onItineraryUpdate={handleItineraryUpdate}
             onClose={() => setShowChat(false)}
             tripId={saved ? savedTripId : undefined}
+            collaboratorId={(itinerary as any)?.collaborator_id}
           />
+        </div>
+      )}
+
+      {/* Share Trip Modal */}
+      {showShareModal && savedTripId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
+            <button
+              onClick={() => {
+                setShowShareModal(false);
+              }}
+              disabled={sharingTrip}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            >
+              ✕
+            </button>
+
+            <h2 className="mb-4 text-2xl font-bold text-emerald-900">Share Trip</h2>
+            <p className="mb-2 text-sm text-emerald-700">
+              Share "{tripName || itinerary?.destination || 'this trip'}" with a friend
+            </p>
+
+            {friends.length === 0 ? (
+              <p className="mb-4 text-sm text-emerald-600 italic">
+                You need to have friends to share trips. Go to the Friends page to add friends.
+              </p>
+            ) : (
+              <div className="mb-6 max-h-64 space-y-2 overflow-y-auto">
+                {friends.map((friend) => (
+                  <div
+                    key={friend.friendship_id}
+                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-emerald-900">
+                        @{friend.username || friend.email || "unknown"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleShareTrip(friend.friend_id, true)}
+                      disabled={sharingTrip}
+                      className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      Share
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setShowShareModal(false);
+              }}
+              disabled={sharingTrip}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

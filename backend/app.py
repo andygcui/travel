@@ -41,6 +41,7 @@ class ChatPlannerRequest(BaseModel):
     itinerary: Dict[str, Any]
     user_id: Optional[str] = None
     trip_id: Optional[str] = None
+    collaborator_id: Optional[str] = None  # For shared trips, combine preferences from both users
 
 
 class ChatPlannerResponse(BaseModel):
@@ -65,7 +66,8 @@ async def chat_planner_endpoint(request: ChatPlannerRequest):
         request.message, 
         request.itinerary,
         user_id=request.user_id,
-        trip_id=request.trip_id
+        trip_id=request.trip_id,
+        collaborator_id=request.collaborator_id
     )
     return ChatPlannerResponse(
         response=result["response"],
@@ -299,6 +301,19 @@ class AcceptFriendRequest(BaseModel):
 
 class RemoveFriendRequest(BaseModel):
     user_id: str
+    friend_id: str
+
+
+class ShareTripRequest(BaseModel):
+    trip_id: str
+    owner_id: str
+    friend_id: str
+    can_edit: bool = True
+
+
+class UnshareTripRequest(BaseModel):
+    trip_id: str
+    owner_id: str
     friend_id: str
 
 
@@ -770,6 +785,259 @@ async def get_sent_requests(user_id: str):
     except Exception as e:
         logger.error(f"Error getting sent requests: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting sent requests: {str(e)}")
+
+
+@app.post("/trips/share")
+async def share_trip(request: ShareTripRequest):
+    """Share a trip with a friend"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Verify the user owns the trip
+        trip_result = supabase.table("saved_trips").select("user_id").eq("id", request.trip_id).execute()
+        if not trip_result.data or len(trip_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        if trip_result.data[0]["user_id"] != request.owner_id:
+            raise HTTPException(status_code=403, detail="You can only share trips you own")
+        
+        # Verify they are friends
+        friendship_result = supabase.table("friendships").select("*").or_(
+            f"user_id.eq.{request.owner_id},friend_id.eq.{request.owner_id}"
+        ).or_(
+            f"user_id.eq.{request.friend_id},friend_id.eq.{request.friend_id}"
+        ).eq("status", "accepted").execute()
+        
+        are_friends = False
+        for friendship in friendship_result.data or []:
+            if (friendship["user_id"] == request.owner_id and friendship["friend_id"] == request.friend_id) or \
+               (friendship["user_id"] == request.friend_id and friendship["friend_id"] == request.owner_id):
+                are_friends = True
+                break
+        
+        if not are_friends:
+            raise HTTPException(status_code=400, detail="You can only share trips with friends")
+        
+        # Check if already shared
+        existing = supabase.table("trip_shares").select("*").eq("trip_id", request.trip_id).eq(
+            "shared_with_id", request.friend_id
+        ).execute()
+        
+        if existing.data and len(existing.data) > 0:
+            raise HTTPException(status_code=400, detail="Trip already shared with this friend")
+        
+        # Create share
+        result = supabase.table("trip_shares").insert({
+            "trip_id": request.trip_id,
+            "owner_id": request.owner_id,
+            "shared_with_id": request.friend_id,
+            "can_edit": request.can_edit,
+        }).execute()
+        
+        logger.info(f"Trip {request.trip_id} shared with {request.friend_id} by {request.owner_id}")
+        return {"message": "Trip shared successfully", "share": result.data[0] if result.data else None}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sharing trip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error sharing trip: {str(e)}")
+
+
+@app.post("/trips/unshare")
+async def unshare_trip(request: UnshareTripRequest):
+    """Unshare a trip with a friend"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Verify the user owns the trip or is the one it's shared with
+        trip_result = supabase.table("saved_trips").select("user_id").eq("id", request.trip_id).execute()
+        if not trip_result.data or len(trip_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Check if user is owner or shared with
+        share_result = supabase.table("trip_shares").select("*").eq("trip_id", request.trip_id).eq(
+            "shared_with_id", request.friend_id
+        ).execute()
+        
+        if not share_result.data or len(share_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Trip share not found")
+        
+        share = share_result.data[0]
+        if share["owner_id"] != request.owner_id and share["shared_with_id"] != request.owner_id:
+            raise HTTPException(status_code=403, detail="You can only unshare trips you own or that are shared with you")
+        
+        # Delete the share
+        supabase.table("trip_shares").delete().eq("trip_id", request.trip_id).eq(
+            "shared_with_id", request.friend_id
+        ).execute()
+        
+        logger.info(f"Trip {request.trip_id} unshared with {request.friend_id} by {request.owner_id}")
+        return {"message": "Trip unshared successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unsharing trip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error unsharing trip: {str(e)}")
+
+
+@app.get("/trips/shared")
+async def get_shared_trips(user_id: str):
+    """Get trips shared with the user"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get trips shared with this user
+        shares_result = supabase.table("trip_shares").select("*, saved_trips(*)").eq(
+            "shared_with_id", user_id
+        ).execute()
+        
+        shared_trips = []
+        for share in shares_result.data or []:
+            if share.get("saved_trips"):
+                trip = share["saved_trips"]
+                # Get owner username
+                owner_username = ""
+                try:
+                    owner_prefs = supabase.table("user_preferences").select("username").eq(
+                        "user_id", share["owner_id"]
+                    ).execute()
+                    if owner_prefs.data and len(owner_prefs.data) > 0:
+                        owner_username = owner_prefs.data[0].get("username", "")
+                except:
+                    pass
+                
+                shared_trips.append({
+                    "trip_id": trip["id"],
+                    "trip_name": trip["trip_name"],
+                    "destination": trip["destination"],
+                    "start_date": trip.get("start_date"),
+                    "end_date": trip.get("end_date"),
+                    "num_days": trip.get("num_days"),
+                    "budget": trip.get("budget"),
+                    "mode": trip.get("mode"),
+                    "itinerary_data": trip.get("itinerary_data"),
+                    "created_at": trip.get("created_at"),
+                    "updated_at": trip.get("updated_at"),
+                    "owner_id": share["owner_id"],
+                    "owner_username": owner_username,
+                    "can_edit": share.get("can_edit", True),
+                    "share_id": share["id"],
+                })
+        
+        return {"shared_trips": shared_trips}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting shared trips: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting shared trips: {str(e)}")
+
+
+@app.get("/trips/shared-by")
+async def get_trips_shared_by_user(user_id: str):
+    """Get trips shared by the user (trips they own and shared)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get trips shared by this user
+        shares_result = supabase.table("trip_shares").select("*, saved_trips(*)").eq(
+            "owner_id", user_id
+        ).execute()
+        
+        shared_trips = []
+        for share in shares_result.data or []:
+            if share.get("saved_trips"):
+                trip = share["saved_trips"]
+                # Get friend username
+                friend_username = ""
+                try:
+                    friend_prefs = supabase.table("user_preferences").select("username").eq(
+                        "user_id", share["shared_with_id"]
+                    ).execute()
+                    if friend_prefs.data and len(friend_prefs.data) > 0:
+                        friend_username = friend_prefs.data[0].get("username", "")
+                except:
+                    pass
+                
+                shared_trips.append({
+                    "trip_id": trip["id"],
+                    "trip_name": trip["trip_name"],
+                    "destination": trip["destination"],
+                    "shared_with_id": share["shared_with_id"],
+                    "friend_username": friend_username,
+                    "can_edit": share.get("can_edit", True),
+                    "share_id": share["id"],
+                    "created_at": share.get("created_at"),
+                })
+        
+        return {"shared_trips": shared_trips}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting trips shared by user: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting trips shared by user: {str(e)}")
+
+
+@app.put("/trips/shared/update")
+async def update_shared_trip(trip_id: str, user_id: str, itinerary_data: Dict[str, Any]):
+    """Update a shared trip (only if user has edit permission)"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Check if user owns the trip or has edit permission
+        trip_result = supabase.table("saved_trips").select("user_id").eq("id", trip_id).execute()
+        if not trip_result.data or len(trip_result.data) == 0:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        trip_owner = trip_result.data[0]["user_id"]
+        
+        # If user is owner, allow update
+        if trip_owner == user_id:
+            result = supabase.table("saved_trips").update({
+                "itinerary_data": itinerary_data,
+                "updated_at": "now()",
+            }).eq("id", trip_id).execute()
+            return {"message": "Trip updated successfully", "trip": result.data[0] if result.data else None}
+        
+        # Check if trip is shared with user and they have edit permission
+        share_result = supabase.table("trip_shares").select("*").eq("trip_id", trip_id).eq(
+            "shared_with_id", user_id
+        ).execute()
+        
+        if not share_result.data or len(share_result.data) == 0:
+            raise HTTPException(status_code=403, detail="You don't have permission to edit this trip")
+        
+        share = share_result.data[0]
+        if not share.get("can_edit", True):
+            raise HTTPException(status_code=403, detail="You don't have edit permission for this trip")
+        
+        # Update the trip
+        result = supabase.table("saved_trips").update({
+            "itinerary_data": itinerary_data,
+            "updated_at": "now()",
+        }).eq("id", trip_id).execute()
+        
+        logger.info(f"Shared trip {trip_id} updated by {user_id}")
+        return {"message": "Trip updated successfully", "trip": result.data[0] if result.data else None}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating shared trip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error updating shared trip: {str(e)}")
 
 
 @app.post("/friends/accept")

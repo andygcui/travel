@@ -14,9 +14,10 @@ interface ChatPlannerProps {
   onItineraryUpdate: (updatedItinerary: any) => void;
   onClose?: () => void;
   tripId?: string;
+  collaboratorId?: string; // For shared trips, combine preferences from both users
 }
 
-export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose, tripId }: ChatPlannerProps) {
+export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose, tripId, collaboratorId }: ChatPlannerProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -67,6 +68,7 @@ export default function ChatPlanner({ itinerary, onItineraryUpdate, onClose, tri
           itinerary: itinerary,
           user_id: user?.id || null,
           trip_id: tripId || null,
+          collaborator_id: collaboratorId || null,
         }),
       });
 

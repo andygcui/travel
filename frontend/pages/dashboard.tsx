@@ -18,6 +18,26 @@ interface SavedTrip {
   itinerary_data: any;
   created_at: string;
   updated_at: string;
+  user_id?: string;
+}
+
+interface SharedTrip {
+  trip_id: string;
+  trip_name: string;
+  destination: string;
+  start_date: string | null;
+  end_date: string | null;
+  num_days: number | null;
+  budget: number;
+  mode: string;
+  itinerary_data: any;
+  created_at: string;
+  updated_at: string;
+  owner_id: string;
+  owner_username?: string;
+  can_edit: boolean;
+  share_id: string;
+  is_shared?: boolean;
 }
 
 export default function Dashboard() {
@@ -44,6 +64,11 @@ export default function Dashboard() {
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [sharedTrips, setSharedTrips] = useState<SharedTrip[]>([]);
+  const [loadingSharedTrips, setLoadingSharedTrips] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<SavedTrip | null>(null);
+  const [sharingTrip, setSharingTrip] = useState(false);
   const previousPreferencesRef = useRef<string>("");
   const previousRegistrationPrefsRef = useRef<string>("");
   const previousProfileSummaryRef = useRef<string>("");
@@ -79,6 +104,7 @@ export default function Dashboard() {
         loadProfile(session.user.id);
         loadFriends();
         loadPendingRequests();
+        loadSharedTrips(session.user.id);
       } else {
         router.push("/");
       }
@@ -94,11 +120,41 @@ export default function Dashboard() {
         loadProfile(session.user.id);
         loadFriends();
         loadPendingRequests();
+        loadSharedTrips(session.user.id);
       } else {
         router.push("/");
       }
     });
   }, [router]);
+
+  // Poll for new shared trips every 30 seconds and when page becomes visible
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const intervalId = setInterval(() => {
+      loadSharedTrips(user.id);
+    }, 30000); // Check every 30 seconds
+
+    // Reload when window regains focus
+    const handleFocus = () => {
+      loadSharedTrips(user.id);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Reload when page becomes visible (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadSharedTrips(user.id);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user?.id]);
 
   const loadFriends = async () => {
     if (!user) return;
@@ -366,28 +422,129 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteTrip = async (tripId: string) => {
-    if (!confirm("Are you sure you want to delete this trip?")) return;
-
-    setDeleting(tripId);
+  const loadSharedTrips = async (userId: string) => {
+    setLoadingSharedTrips(true);
     try {
-      const { error } = await supabase
-        .from("saved_trips")
-        .delete()
-        .eq("id", tripId);
-
-      if (error) throw error;
-
-      setTrips(trips.filter((t) => t.id !== tripId));
+      const response = await fetch(`http://localhost:8000/trips/shared?user_id=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSharedTrips(data.shared_trips || []);
+      }
     } catch (err: any) {
-      alert(`Failed to delete trip: ${err.message}`);
+      console.error("Error loading shared trips:", err);
     } finally {
-      setDeleting(null);
+      setLoadingSharedTrips(false);
     }
   };
 
-  const handleViewTrip = (trip: SavedTrip) => {
+  const handleDeleteTrip = async (tripId: string, isShared: boolean = false) => {
+    if (isShared) {
+      // For shared trips, only remove the share, not the trip itself
+      if (!confirm("Are you sure you want to remove this shared trip from your dashboard?")) return;
+      
+      setDeleting(tripId);
+      try {
+        const share = sharedTrips.find((t) => t.trip_id === tripId);
+        if (!share || !user) return;
+        
+        const response = await fetch("http://localhost:8000/trips/unshare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trip_id: tripId,
+            owner_id: share.owner_id,
+            friend_id: user.id,
+          }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ detail: "Failed to unshare trip" }));
+          throw new Error(errorData.detail || "Failed to unshare trip");
+        }
+        
+        setSharedTrips(sharedTrips.filter((t) => t.trip_id !== tripId));
+      } catch (err: any) {
+        alert(`Failed to remove shared trip: ${err.message}`);
+      } finally {
+        setDeleting(null);
+      }
+    } else {
+      // For owned trips, delete the trip
+      if (!confirm("Are you sure you want to delete this trip?")) return;
+
+      setDeleting(tripId);
+      try {
+        const { error } = await supabase
+          .from("saved_trips")
+          .delete()
+          .eq("id", tripId);
+
+        if (error) throw error;
+
+        setTrips(trips.filter((t) => t.id !== tripId));
+      } catch (err: any) {
+        alert(`Failed to delete trip: ${err.message}`);
+      } finally {
+        setDeleting(null);
+      }
+    }
+  };
+
+  const handleShareTrip = async (friendId: string, canEdit: boolean = true) => {
+    if (!user || !selectedTrip) return;
+    
+    setSharingTrip(true);
+    try {
+      const response = await fetch("http://localhost:8000/trips/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trip_id: selectedTrip.id,
+          owner_id: user.id,
+          friend_id: friendId,
+          can_edit: canEdit,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to share trip" }));
+        throw new Error(errorData.detail || "Failed to share trip");
+      }
+      
+      alert("Trip shared successfully!");
+      setShowShareModal(false);
+      setSelectedTrip(null);
+    } catch (err: any) {
+      alert(`Failed to share trip: ${err.message}`);
+    } finally {
+      setSharingTrip(false);
+    }
+  };
+
+  const handleViewTrip = (trip: SavedTrip | SharedTrip) => {
     sessionStorage.setItem("itinerary", JSON.stringify(trip.itinerary_data));
+    // Store trip ID so results page knows it's a saved trip
+    const tripId = "trip_id" in trip ? trip.trip_id : trip.id;
+    if (tripId) {
+      sessionStorage.setItem("savedTripId", tripId);
+    }
+    // If it's a shared trip, determine the collaborator
+    if ("owner_id" in trip) {
+      // If user is viewing a trip shared with them (they are not the owner)
+      if (trip.owner_id !== user?.id) {
+        // Store owner_id as collaborator_id so we combine owner's preferences
+        sessionStorage.setItem("collaborator_id", trip.owner_id);
+      } else {
+        // User is the owner viewing their own trip
+        // We need to find who they shared it with to combine preferences
+        // For now, we'll need to fetch this from the backend when viewing
+        // Clear collaborator_id - it will be set by backend if needed
+        sessionStorage.removeItem("collaborator_id");
+      }
+    } else {
+      // Regular trip, clear collaborator_id
+      sessionStorage.removeItem("collaborator_id");
+    }
     router.push("/results");
   };
 
@@ -801,6 +958,82 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* Shared Trips Section */}
+          {sharedTrips.length > 0 && (
+            <div className="mb-8">
+              <h2 className="mb-4 text-2xl font-semibold text-emerald-900">Shared with Me</h2>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {sharedTrips.map((trip) => (
+                  <div
+                    key={trip.share_id}
+                    className="group rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm transition hover:shadow-lg"
+                  >
+                    <div className="mb-4 flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-semibold text-emerald-900">{trip.trip_name}</h3>
+                        <p className="mt-1 text-sm text-emerald-600">{trip.destination}</p>
+                        <p className="mt-1 text-xs text-amber-600">
+                          Shared by @{trip.owner_username || "unknown"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteTrip(trip.trip_id, true)}
+                        disabled={deleting === trip.trip_id}
+                        className="ml-2 rounded-full p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                        title="Remove shared trip"
+                      >
+                        {deleting === trip.trip_id ? "⏳" : "🗑️"}
+                      </button>
+                    </div>
+
+                    <div className="mb-4 space-y-2 text-sm text-emerald-700">
+                      {trip.start_date && trip.end_date && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-500">📅</span>
+                          <span>
+                            {formatDate(trip.start_date)} - {formatDate(trip.end_date)}
+                          </span>
+                        </div>
+                      )}
+                      {trip.num_days && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-500">⏱️</span>
+                          <span>{trip.num_days} days</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-500">💰</span>
+                        <span>Budget: {formatCurrency(trip.budget)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-500">🎯</span>
+                        <span className="capitalize">{trip.mode}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex gap-3">
+                      <button
+                        onClick={() => handleViewTrip(trip)}
+                        className="flex-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:shadow-lg"
+                      >
+                        {trip.can_edit ? "View & Edit" : "View Trip"}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 text-xs text-gray-400">
+                      Shared {new Date(trip.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* My Trips Section */}
+          <div className="mb-8">
+            <h2 className="mb-4 text-2xl font-semibold text-emerald-900">My Trips</h2>
+          </div>
+
           {trips.length === 0 ? (
             <div className="rounded-2xl border border-emerald-200 bg-white p-12 text-center shadow-sm">
               <div className="mb-4 text-6xl">✈️</div>
@@ -827,14 +1060,26 @@ export default function Dashboard() {
                       <h3 className="text-xl font-semibold text-emerald-900">{trip.trip_name}</h3>
                       <p className="mt-1 text-sm text-emerald-600">{trip.destination}</p>
                     </div>
-                    <button
-                      onClick={() => handleDeleteTrip(trip.id)}
-                      disabled={deleting === trip.id}
-                      className="ml-2 rounded-full p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
-                      title="Delete trip"
-                    >
-                      {deleting === trip.id ? "⏳" : "🗑️"}
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          setSelectedTrip(trip);
+                          setShowShareModal(true);
+                        }}
+                        className="rounded-full p-2 text-gray-400 transition hover:bg-emerald-50 hover:text-emerald-500"
+                        title="Share trip"
+                      >
+                        🔗
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTrip(trip.id, false)}
+                        disabled={deleting === trip.id}
+                        className="rounded-full p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                        title="Delete trip"
+                      >
+                        {deleting === trip.id ? "⏳" : "🗑️"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-4 space-y-2 text-sm text-emerald-700">
@@ -1023,6 +1268,68 @@ export default function Dashboard() {
                 {deletingAccount ? "Deleting..." : "Delete Account"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Trip Modal */}
+      {showShareModal && selectedTrip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl">
+            <button
+              onClick={() => {
+                setShowShareModal(false);
+                setSelectedTrip(null);
+              }}
+              disabled={sharingTrip}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            >
+              ✕
+            </button>
+
+            <h2 className="mb-4 text-2xl font-bold text-emerald-900">Share Trip</h2>
+            <p className="mb-2 text-sm text-emerald-700">
+              Share "{selectedTrip.trip_name}" with a friend
+            </p>
+
+            {friends.length === 0 ? (
+              <p className="mb-4 text-sm text-emerald-600 italic">
+                You need to have friends to share trips. Go to the Friends page to add friends.
+              </p>
+            ) : (
+              <div className="mb-6 max-h-64 space-y-2 overflow-y-auto">
+                {friends.map((friend) => (
+                  <div
+                    key={friend.friendship_id}
+                    className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 p-3"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-emerald-900">
+                        @{friend.username || friend.email || "unknown"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleShareTrip(friend.friend_id, true)}
+                      disabled={sharingTrip}
+                      className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      Share
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setShowShareModal(false);
+                setSelectedTrip(null);
+              }}
+              disabled={sharingTrip}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
