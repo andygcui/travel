@@ -1,6 +1,11 @@
 "use client";
 
-import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView } from "@react-google-maps/api";
+import { GoogleMap, LoadScript, Marker, InfoWindow, OverlayView, DirectionsService, DirectionsRenderer } from "@react-google-maps/api";
+
+// Travel mode for directions (default: walking, can be changed to 'TRANSIT' for public transport)
+const DEFAULT_TRAVEL_MODE = "WALKING";
+
+// ...existing code...
 import { useEffect, useState, useRef } from "react";
 
 interface Place {
@@ -20,6 +25,7 @@ interface ItineraryMapProps {
 const ACCENT = "#2d6a4f"; // quiet fern green
 const ACCENT_DARK = "#1b4332"; // darker outline for contrast
 
+
 export default function ItineraryMap({ destination, attractions }: ItineraryMapProps) {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [activeMarker, setActiveMarker] = useState<Place | null>(null);
@@ -30,11 +36,54 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
   const mapRef = useRef<google.maps.Map | null>(null);
   const coordinateCache = useRef<Map<string, { lat: number; lng: number }>>(new Map());
 
+  // Directions state
+  const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+  const [directionsError, setDirectionsError] = useState<string | null>(null);
+
   // Debug: Log attractions received
   useEffect(() => {
     console.log("ItineraryMap received attractions:", attractions);
     console.log("Destination:", destination);
   }, [attractions, destination]);
+
+  // Request directions between all consecutive attractions (if 2+ valid coordinates)
+  useEffect(() => {
+    if (!isGoogleMapsLoaded || coordinates.length < 2) {
+      setDirections(null);
+      return;
+    }
+    // Filter out nulls and invalid coords
+    const validCoords = coordinates.filter(c => c && typeof c.lat === 'number' && typeof c.lng === 'number');
+    if (validCoords.length < 2) {
+      setDirections(null);
+      return;
+    }
+    // Build waypoints (all except first and last)
+    const waypoints = validCoords.slice(1, -1).map(c => ({ location: c, stopover: true }));
+    const origin = validCoords[0];
+    const destinationCoord = validCoords[validCoords.length - 1];
+    const travelMode = DEFAULT_TRAVEL_MODE;
+    // Use DirectionsService to get route
+    const service = new window.google.maps.DirectionsService();
+    service.route(
+      {
+        origin,
+        destination: destinationCoord,
+        waypoints,
+        travelMode: window.google.maps.TravelMode[travelMode],
+        optimizeWaypoints: true, // Let Google optimize the order for least time
+      },
+      (result, status) => {
+        if (status === "OK" && result) {
+          setDirections(result);
+          setDirectionsError(null);
+        } else {
+          setDirections(null);
+          setDirectionsError("Could not fetch walking directions.");
+        }
+      }
+    );
+  }, [isGoogleMapsLoaded, coordinates]);
 
   // Initialize coordinates immediately from backend data (if available)
   useEffect(() => {
@@ -298,6 +347,21 @@ export default function ItineraryMap({ destination, attractions }: ItineraryMapP
             }
           }}
         >
+          {/* Walking/Transit Route (solid line) */}
+          {directions && (
+            <DirectionsRenderer
+              directions={directions}
+              options={{
+                suppressMarkers: true, // We'll use our custom markers
+                polylineOptions: {
+                  strokeColor: ACCENT,
+                  strokeWeight: 5,
+                  strokeOpacity: 0.85,
+                },
+              }}
+            />
+          )}
+
           {/* Markers with pushpin style (quiet fern green) */}
           {isGoogleMapsLoaded && attractions.map((a, i) => {
             // Priority: Use coordinates from state, fallback to attraction's lat/lng
