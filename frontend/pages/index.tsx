@@ -360,13 +360,32 @@ export default function Home() {
           <div className="mx-auto max-w-4xl text-center relative z-10">
             <div className="hero-text space-y-6">
               {/* Removed emoji for cleaner look */}
-              <h1 className="reveal text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg">
-                Smarter Trips. Smaller Footprints.
+              <h1 className="reveal text-6xl md:text-7xl font-semibold text-white tracking-tight drop-shadow-lg whitespace-nowrap">
+                Go Further. Leave Less.
               </h1>
               <p className="reveal mx-auto max-w-2xl text-lg md:text-xl text-[#eaf6ee] mt-4">
                 Discover smarter, greener journeys curated to balance cost,
                 experience, and sustainability.
               </p>
+              
+              {/* Scroll indicator */}
+              <div className="reveal flex flex-col items-center gap-2 animate-bounce" style={{ marginTop: '40px' }}>
+                <svg
+                  className="w-6 h-6 text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.5 13.5L12 21m0 0L4.5 13.5M12 21V3"
+                  />
+                </svg>
+                <span className="text-sm text-gray-300 font-light">Plan Your Next Trip</span>
+              </div>
             </div>
           </div>
         </section>
