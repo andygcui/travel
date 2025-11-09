@@ -8,6 +8,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { supabase } from "../lib/supabase";
 import ChatPlanner from "../components/ChatPlanner";
 import ItineraryMap from "../components/ItineraryMap";
+import tokyoHotels from "../data/hotels/tokyo.json";
 
 // Register GSAP plugin
 if (typeof window !== "undefined") {
@@ -772,7 +773,6 @@ export default function Results() {
     setSelectedCabinId(null);
     setConfirmedCabinId(null);
     setExpandedFlightId(null);
-    setShowAllFlights(false);
   }, [itinerary?.destination, itinerary?.start_date, itinerary?.end_date]);
 
   const handleSaveTrip = async () => {
@@ -865,6 +865,8 @@ export default function Results() {
   const hotelOptions = useMemo<HotelCard[]>(() => {
     if (!itinerary) return [];
 
+    const normalizedDestination = normalizePlaceName(itinerary.destination);
+
     const attractionList = itinerary.attractions ?? [];
 
     const findPoiForHotel = (name: string): PointOfInterest | undefined => {
@@ -902,13 +904,35 @@ export default function Results() {
     const seen = new Set<string>();
 
     const pushCard = (card: HotelCard) => {
+      if (!card.image) return;
       const key = normalizePlaceName(card.name);
       if (!key || seen.has(key)) return;
       seen.add(key);
       cards.push(card);
     };
 
-    (itinerary.hotels ?? []).forEach((hotel) => {
+    const combinedHotels: LodgingOption[] = normalizedDestination.includes("tokyo")
+      ? ((tokyoHotels as unknown as LodgingOption[]) || []).map((hotel, idx) => {
+          const image = (hotel as any).image as string | undefined;
+          const nightlyRateOverride = (hotel as any).nightlyRate as number | undefined;
+          const reviewCountOverride = (hotel as any).reviewCount as number | undefined;
+          return {
+            id: hotel.id ?? `tokyo-hotel-${idx}`,
+            currency: hotel.currency ?? "USD",
+            photo_urls:
+              hotel.photo_urls && hotel.photo_urls.length > 0
+                ? hotel.photo_urls
+                : image
+                  ? [image]
+                  : [],
+            nightly_rate: hotel.nightly_rate ?? nightlyRateOverride,
+            user_ratings_total: hotel.user_ratings_total ?? reviewCountOverride,
+            ...hotel,
+          };
+        })
+      : itinerary.hotels ?? [];
+
+    combinedHotels.forEach((hotel) => {
       if (!hotel.name) return;
       const poi = findPoiForHotel(hotel.name);
       const image =
@@ -1108,7 +1132,13 @@ export default function Results() {
   const formatDateTime = (value?: string) => {
     if (!value) return "Schedule pending";
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+    });
   };
 
   const formatDurationLabel = (departure?: string, arrival?: string) => {
@@ -1195,8 +1225,7 @@ export default function Results() {
     return clone;
   }, [groupedFlights, flightSort]);
 
-  const [showAllFlights, setShowAllFlights] = useState(false);
-  const flightsToRender = showAllFlights ? sortedFlightGroups : sortedFlightGroups.slice(0, 3);
+  const flightsToRender = sortedFlightGroups;
 
   const findCabinById = useMemo(() => {
     const map = new Map<string, { cabin: FlightCabinOption; group: FlightGroup; maxEmission: number }>();
@@ -1438,87 +1467,87 @@ export default function Results() {
 
       <main className="mx-auto max-w-7xl px-6 py-12 md:px-12">
         {/* Page Header */}
-        <section className="mb-16 text-center">
-          <p className="text-sm uppercase tracking-[0.3em] text-emerald-600/70">Your Trip To</p>
-          <h1 className="mt-2 text-5xl font-bold uppercase tracking-tight text-[#0b3d2e] md:text-6xl">
-            {itinerary.destination.toUpperCase()}
+        <section className="mb-10">
+          <p className="text-sm font-medium text-gray-500">Trip Overview</p>
+          <h1 className="mt-1 text-4xl font-semibold text-gray-900 md:text-5xl">
+            {itinerary.destination}
           </h1>
         </section>
 
         {/* Summary Row */}
-        <section className="mb-12 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Total Spend</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">
+        <section className="mb-10 flex flex-wrap items-center gap-x-12 gap-y-6 text-sm text-gray-700">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Total Spend</span>
+            <span className="text-xl font-semibold text-gray-900">
               {hasConfirmedFlight && confirmedSpend !== null ? currency.format(confirmedSpend) : "--"}
-            </p>
-            <p className="mt-2 text-sm text-emerald-600/80">Budget: {currency.format(itinerary.budget)}</p>
+            </span>
+            <span className="text-xs text-gray-500">Budget: {currency.format(itinerary.budget)}</span>
           </div>
-          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Estimated CO₂</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Estimated CO₂</span>
+            <span className="text-xl font-semibold text-gray-900">
               {hasConfirmedFlight && confirmedEmissions !== null ? `${confirmedEmissions.toFixed(1)} kg` : "--"}
-            </p>
-            <p className="mt-2 text-sm text-emerald-600/80">+ eco points</p>
+            </span>
+            <span className="text-xs text-gray-500">+ eco points</span>
           </div>
-          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Duration</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">{itinerary.num_days} days</p>
-            <p className="mt-2 text-sm text-emerald-600/80">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Duration</span>
+            <span className="text-xl font-semibold text-gray-900">{itinerary.num_days} days</span>
+            <span className="text-xs text-gray-500">
               {itinerary.start_date && itinerary.end_date
                 ? `${formatDate(itinerary.start_date)} – ${formatDate(itinerary.end_date)}`
                 : "Dates TBD"}
-            </p>
+            </span>
           </div>
-          <div className="summary-card bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-sm text-center border border-white/10">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-600/70 mb-2">Carbon Credits</p>
-            <p className="text-4xl font-bold text-[#0b3d2e]">
-              {confirmedCarbonCredits !== null ? `+ ${confirmedCarbonCredits.toFixed(1)}` : "--"}
-            </p>
-            <p className="mt-2 text-sm text-emerald-600/80">Saved vs highest-impact cabin</p>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">Carbon Credits</span>
+            <span className="text-xl font-semibold text-emerald-700">
+              {confirmedCarbonCredits !== null ? `+${confirmedCarbonCredits.toFixed(1)}` : "--"}
+            </span>
+            <span className="text-xs text-gray-500">Saved vs highest-impact cabin</span>
           </div>
         </section>
 
         {confirmedCabinData && (
-          <div className="mb-20 rounded-2xl border border-white/10 bg-white/70 p-6 shadow-sm backdrop-blur-xl">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Selected Flight</p>
-                <p className="mt-1 text-xl font-semibold text-[#0b3d2e]">
+          <div className="mx-auto mb-16 max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-md">
+            <div className="flex flex-wrap items-start justify-between gap-6 border-b border-gray-200 pb-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Selected Flight</p>
+                <p className="text-2xl font-semibold text-gray-900">
                   {confirmedCabinData.group.origin} → {confirmedCabinData.group.destination}
                 </p>
-                <p className="text-sm text-emerald-600/80">
+                <p className="text-sm font-medium text-gray-800">
                   {formatDateTime(confirmedCabinData.group.departure)} —{" "}
                   {formatDateTime(confirmedCabinData.group.arrival)} ·{" "}
                   {formatDurationLabel(confirmedCabinData.group.departure, confirmedCabinData.group.arrival)}
-              </p>
-            </div>
+                </p>
+              </div>
               <div className="text-right">
-                <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Cabin</p>
-                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Cabin</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
                   {formatCabinLabel(confirmedCabinData.cabin.cabin)}
                 </p>
               </div>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
-                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Flight Cost</p>
-                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Flight Cost</p>
+                <p className="mt-2 text-lg font-semibold text-gray-900">
                   {currency.format(confirmedCabinData.cabin.price)}
                 </p>
               </div>
-              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
-                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Flight Emissions</p>
-                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Flight Emissions</p>
+                <p className="mt-2 text-lg font-semibold text-gray-900">
                   {confirmedCabinData.cabin.emissionsKg !== undefined && confirmedCabinData.cabin.emissionsKg !== null
                     ? `${confirmedCabinData.cabin.emissionsKg.toFixed(1)} kg`
                     : "N/A"}
                 </p>
               </div>
-              <div className="rounded-xl bg-emerald-50/50 p-4 text-sm text-emerald-700">
-                <p className="text-xs uppercase tracking-[0.25em] text-emerald-500">Carbon Credits</p>
-                <p className="mt-1 text-lg font-semibold text-[#0b3d2e]">
-                  {confirmedCarbonCredits !== null ? `+ ${confirmedCarbonCredits.toFixed(1)}` : "--"}
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Carbon Credits</p>
+                <p className="mt-2 text-lg font-semibold text-emerald-700">
+                  {confirmedCarbonCredits !== null ? `+${confirmedCarbonCredits.toFixed(1)}` : "--"}
                 </p>
               </div>
             </div>
@@ -1530,7 +1559,7 @@ export default function Results() {
                   setSelectedCabinId(null);
                   setExpandedFlightId(null);
                 }}
-                className="rounded-full border border-emerald-200 bg-white px-5 py-2 text-sm font-medium text-emerald-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
+                className="rounded-md border border-gray-300 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:text-gray-900"
               >
                 Remove flight
               </button>
@@ -1540,27 +1569,43 @@ export default function Results() {
 
         {/* Flight Options */}
         <section className="flight-section mb-20">
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6">
             <h2 className="text-2xl font-bold text-[#0b3d2e]">Flight Options</h2>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="flex flex-col text-emerald-700">
-                <span className="mb-1 text-xs uppercase tracking-[0.2em] text-emerald-500">Sort by</span>
-                <select
-                  value={flightSort}
-                  onChange={(e) => setFlightSort(e.target.value as "priceAsc" | "priceDesc")}
-                  className="rounded-full border border-emerald-200 bg-white/70 px-4 py-2 text-sm text-[#0b3d2e] shadow-sm focus:border-emerald-400 focus:outline-none"
-                >
-                  <option value="priceAsc">Lowest price</option>
-                  <option value="priceDesc">Highest price</option>
-                </select>
-              </label>
-            </div>
           </div>
 
-  <div className="space-y-4">
-    {sortedFlightGroups.length > 0 ? (
-      flightsToRender.map((flight) => {
+          <div className="relative">
+            {sortedFlightGroups.length > 3 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const container = e.currentTarget.parentElement?.querySelector<HTMLDivElement>(".flight-scroll");
+                    container?.scrollBy({ left: -320, behavior: "smooth" });
+                  }}
+                  className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md transition hover:bg-white"
+                  aria-label="Scroll flights left"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const container = e.currentTarget.parentElement?.querySelector<HTMLDivElement>(".flight-scroll");
+                    container?.scrollBy({ left: 320, behavior: "smooth" });
+                  }}
+                  className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md transition hover:bg-white"
+                  aria-label="Scroll flights right"
+                >
+                  ›
+                </button>
+              </>
+            )}
+
+            <div className="flight-scroll flex gap-4 overflow-x-auto pb-4 pr-8 scroll-smooth">
+              {sortedFlightGroups.length > 0 ? (
+                flightsToRender.map((flight) => {
         const isExpanded = expandedFlightId === flight.groupId;
+        const isHidden = Boolean(expandedFlightId && expandedFlightId !== flight.groupId);
         const durationText = (() => {
           const depart = new Date(flight.departure);
           const arrive = new Date(flight.arrival);
@@ -1579,54 +1624,59 @@ export default function Results() {
           }, 0) || 0;
 
         return (
-          <div
-            key={flight.groupId}
-            className="flight-card rounded-2xl border border-white/10 bg-white/60 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-lg"
-          >
-              <button
+                  <div
+                    key={flight.groupId}
+                    className={`flight-card flex flex-shrink-0 flex-col overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-md transition-all duration-300 ${
+                      isExpanded
+                        ? "w-[420px] p-6 opacity-100 shadow-lg"
+                        : expandedFlightId
+                          ? "pointer-events-none w-0 -translate-x-4 scale-95 p-0 opacity-0"
+                          : "w-[320px] p-6 opacity-100 hover:shadow-lg"
+                    }`}
+                  >
+            <button
               onClick={() => setExpandedFlightId(isExpanded ? null : flight.groupId)}
               className="w-full text-left"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-3 text-sm text-emerald-700">
-                    <span className="font-semibold text-[#0b3d2e] text-lg">
-                      {flight.origin} → {flight.destination}
-                    </span>
-                    <span className="rounded-full border border-emerald-200 px-2 py-0.5 text-xs">
+              <div className="flex items-start justify-between gap-6">
+                <div className="space-y-2">
+                  <p className="text-lg font-semibold text-gray-900">
+                    {flight.origin} → {flight.destination}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                    <span>
                       {flight.cabins.length} cabin{flight.cabins.length > 1 ? "s" : ""}
                     </span>
-            </div>
-                  <p className="mt-1 text-xs text-emerald-600/80">
-                    {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)}
+                    <span className="text-gray-400">•</span>
+                    <span>Operated by {flight.carrier}</span>
+                  </div>
+                  <p className="text-sm text-gray-900">
+                    {formatDateTime(flight.departure)} — {formatDateTime(flight.arrival)} · {durationText}
                   </p>
-                  <p className="mt-1 text-xs text-emerald-600/80">
-                    Operated by {flight.carrier}
-                  </p>
-          </div>
+                </div>
                 <div className="text-right">
-                  <p className="text-sm uppercase tracking-[0.2em] text-emerald-500">From</p>
-                  <p className="text-xl font-semibold text-[#0b3d2e]">
+                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-500">From</p>
+                  <p className="text-xl font-semibold text-gray-900">
                     {new Intl.NumberFormat("en-US", {
                       style: "currency",
                       currency: flight.cabins[0]?.currency ?? "USD",
                     }).format(flight.lowestPrice)}
                   </p>
                   {flight.lowestEmissions !== undefined && flight.lowestEmissions !== null && (
-                    <p className="text-xs text-emerald-600/80">
+                    <p className="text-xs text-gray-700">
                       {flight.lowestEmissions.toFixed(1)} kg CO₂ (best cabin)
                     </p>
                   )}
-        </div>
+                </div>
               </div>
             </button>
 
             {isExpanded && (
-              <div className="mt-5 rounded-2xl border border-emerald-100 bg-white/80 p-4">
+              <div className="mt-4 rounded-xl border border-emerald-100 bg-white/95 p-4">
                 <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
                   Choose your cabin
                 </h4>
-                <div className="space-y-3">
+                <div className="flex flex-nowrap gap-3 overflow-x-auto pb-2">
                   {flight.cabins.map((cabin) => {
                     const carbonCredits =
                       cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
@@ -1637,43 +1687,48 @@ export default function Results() {
                       cabin.cabin.toLowerCase() !== "first" &&
                       carbonCredits !== null &&
                       carbonCredits > 0.05;
+                    const cabinLower = cabin.cabin.toLowerCase();
+                    const usesGreenTriangle =
+                      cabinLower === "economy" || cabinLower === "premium economy";
+                    const triangle = usesGreenTriangle ? "▲" : "▼";
+                    const triangleClass = usesGreenTriangle ? "text-emerald-600" : "text-red-500";
                     return (
                       <button
                         key={cabin.id}
                         type="button"
                         onClick={() => setSelectedCabinId(cabin.id)}
-                        className={`flex w-full flex-wrap items-center gap-4 rounded-xl border px-4 py-3 text-left text-sm shadow-sm transition ${
+                        className={`flex min-w-[260px] max-w-[320px] items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm shadow-sm transition ${
                           isSelected
-                            ? "border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200"
-                            : "border-emerald-100 bg-white/90 hover:border-emerald-200 hover:bg-emerald-50/40"
+                            ? "border-gray-400 bg-gray-100 ring-2 ring-gray-200"
+                            : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
                         }`}
                       >
-                        <div className="flex-1">
-                          <p className="font-semibold text-[#0b3d2e]">
+                        <div className="flex min-w-[180px] flex-1 flex-col gap-1">
+                          <p className="text-sm font-semibold text-gray-900">
                             {formatCabinLabel(cabin.cabin)}
                           </p>
-                          <p className="text-xs text-emerald-600/80">
-                            {cabin.emissionsKg !== undefined && cabin.emissionsKg !== null
-                              ? `${cabin.emissionsKg.toFixed(1)} kg CO₂`
-                              : "Emission estimate unavailable"}
-            </p>
-          </div>
-                        <div className="flex flex-col items-start justify-center text-emerald-700">
+                          <p className="flex items-center gap-1 text-xs text-gray-700">
+                            {cabin.emissionsKg !== undefined && cabin.emissionsKg !== null ? (
+                              <>
+                                <span className={`${triangleClass} text-[10px] leading-none`}>{triangle}</span>
+                                {`${cabin.emissionsKg.toFixed(1)} kg CO₂`}
+                              </>
+                            ) : (
+                              "Emission estimate unavailable"
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex min-w-[160px] flex-1 items-center justify-center">
                           {showCredits ? (
-                            <>
-                              <span className="text-lg font-semibold text-emerald-600">
-                                + {carbonCredits!.toFixed(1)}
-                              </span>
-                              <span className="text-[10px] uppercase tracking-[0.3em] text-emerald-500">
-                                Carbon Credits
-                              </span>
-                            </>
+                            <span className="text-base font-semibold text-emerald-700">
+                              +{carbonCredits!.toFixed(1)} credits
+                            </span>
                           ) : (
-                            <span className="text-xs text-emerald-500/60">No credits</span>
+                            <span className="text-sm text-gray-500">No credits</span>
                           )}
                         </div>
                         <div className="flex flex-col items-end">
-                          <p className="font-semibold text-[#0b3d2e]">
+                          <p className="font-semibold text-gray-900">
                             {new Intl.NumberFormat("en-US", {
                               style: "currency",
                               currency: cabin.currency ?? "USD",
@@ -1715,30 +1770,20 @@ export default function Results() {
                 })()}
               </div>
             )}
-          </div>
+                  </div>
         );
       })
     ) : (
-      <div className="rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
+              <div className="rounded-2xl border border-white/10 bg-white/60 p-6 text-sm text-emerald-600/80 backdrop-blur-xl">
         Flight details coming soon
       </div>
     )}
-  </div>
-          {sortedFlightGroups.length > 3 && (
-            <div className="mt-4 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setShowAllFlights((prev) => !prev)}
-                className="rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
-              >
-                {showAllFlights ? "Show fewer flights" : "See more flights"}
-              </button>
             </div>
-          )}
+          </div>
         </section>
 
         {/* Accommodations */}
-        <section className="accommodation-section mb-20">
+        <section className="accommodation-section mb-12">
           <h2 className="mb-6 text-2xl font-bold text-[#0b3d2e]">Where You'll Stay</h2>
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
             {hotelOptions.length > 0 ? (
@@ -1907,7 +1952,7 @@ export default function Results() {
         </section>
 
         {/* Interactive Map */}
-        <section className="map-section mb-20">
+        <section className="map-section mb-12">
           <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-sm">
             {currentDayAttractions.length > 0 ? (
               <ItineraryMap destination={itinerary.destination} attractions={currentDayAttractions} />
