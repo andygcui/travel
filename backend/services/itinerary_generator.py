@@ -224,10 +224,10 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
         day_number = day_data.get("day", len(itinerary_days) + 1)
         itinerary_day = DedalusItineraryDay(
             day=day_number,
-            morning=day_data.get("morning", ""),
-            afternoon=day_data.get("afternoon", ""),
-            evening=day_data.get("evening", ""),
-        )
+                morning=day_data.get("morning", ""),
+                afternoon=day_data.get("afternoon", ""),
+                evening=day_data.get("evening", ""),
+            )
         itinerary_days.append(itinerary_day)
 
         bundle = DayAttractionBundle(day=day_number)
@@ -330,7 +330,7 @@ def _fallback_itinerary(
         itinerary_day.morning = _merge_poi_with_text(bundle.morning, itinerary_day.morning)
         itinerary_day.afternoon = _merge_poi_with_text(bundle.afternoon, itinerary_day.afternoon)
         itinerary_day.evening = _merge_poi_with_text(bundle.evening, itinerary_day.evening)
-
+    
     return GreenTripItineraryResponse(
         destination=request.destination,
         start_date=start_date,

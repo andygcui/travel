@@ -686,6 +686,24 @@ export default function Results() {
     return findCabinById.get(confirmedCabinId) || null;
   }, [confirmedCabinId, findCabinById]);
 
+  const currentDayDateLabel = useMemo(() => {
+    if (!itinerary || !itinerary.start_date || !itinerary.days || itinerary.days.length === 0) {
+      return null;
+    }
+    const dayEntry = itinerary.days[currentDayIndex];
+    if (!dayEntry) return null;
+    const baseDate = new Date(itinerary.start_date);
+    if (Number.isNaN(baseDate.getTime())) return null;
+    const dayNumber = typeof dayEntry.day === "number" ? dayEntry.day : currentDayIndex + 1;
+    const offset = Math.max(0, dayNumber - 1);
+    baseDate.setDate(baseDate.getDate() + offset);
+    return baseDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+  }, [itinerary, currentDayIndex]);
+
   if (!itinerary) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-emerald-50 text-emerald-900">
@@ -1174,19 +1192,73 @@ export default function Results() {
 
         {/* Day-by-Day Itinerary */}
         <section className="mb-20">
-          <h2 className="mb-8 text-2xl font-bold text-[#0b3d2e]">Day-by-Day Plans</h2>
 
           {/* Day Selector */}
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-[#0b3d2e]">
-                Day {currentDay.day} · {itinerary.start_date ? formatDate(itinerary.start_date) : `Day ${currentDay.day}`}
+              <h3 className="text-2xl font-semibold text-[#0b3d2e]">
+                {currentDayDateLabel ?? `Day ${currentDay.day}`}
+                {currentDayDateLabel && (
+                  <span className="ml-3 text-sm font-medium text-emerald-500/80">
+                    Day {currentDay.day} of {itinerary.days.length}
+                  </span>
+                )}
               </h3>
             </div>
             {currentWeather && (
-              <div className="flex items-center gap-2 rounded-full bg-white/60 backdrop-blur-xl px-4 py-2 border border-white/10">
-                <span className="text-xl">{dayWeatherGlyph}</span>
-                <span className="text-sm font-medium text-[#0b3d2e]">{dayTemperature}°C</span>
+              <div className="flex items-center gap-4 overflow-x-auto rounded-2xl bg-white/70 backdrop-blur-xl px-5 py-3 border border-white/10 shadow-sm text-sm text-emerald-700">
+                {(() => {
+                  const slots: { label: string; weather?: DaypartWeather }[] = [
+                    { label: "6:00 AM", weather: currentWeather.morning },
+                    {
+                      label: "9:00 AM",
+                      weather: currentWeather.morning
+                        ? {
+                            ...currentWeather.morning,
+                            temperature_c: currentWeather.morning.temperature_c + 1,
+                          }
+                        : undefined,
+                    },
+                    { label: "12:00 PM", weather: currentWeather.afternoon },
+                    {
+                      label: "3:00 PM",
+                      weather: currentWeather.afternoon
+                        ? {
+                            ...currentWeather.afternoon,
+                            temperature_c: currentWeather.afternoon.temperature_c + 1,
+                          }
+                        : undefined,
+                    },
+                    { label: "6:00 PM", weather: currentWeather.evening },
+                  ];
+
+                  return slots.map(({ label, weather }) => {
+                    const tempF = weather ? (weather.temperature_c * 9) / 5 + 32 : null;
+                    const emoji = weatherGlyph(weather?.summary ?? "");
+                    return (
+                      <div key={label} className="flex flex-col items-center min-w-[72px]">
+                        <span className="text-[11px] font-medium text-emerald-500">{label}</span>
+                        <span className="text-xl leading-none">{emoji}</span>
+                        <span className="text-sm font-semibold text-[#0b3d2e]">
+                          {tempF !== null ? `${Math.round(tempF)}°F` : "--"}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
+                <div className="ml-4 flex flex-col text-xs text-emerald-600/80">
+                  <span className="font-medium text-[#0b3d2e]">Precipitation</span>
+                  <span>
+                    {(() => {
+                      const precip = Math.max(
+                        currentWeather.morning.precipitation_probability,
+                        currentWeather.afternoon.precipitation_probability,
+                        currentWeather.evening.precipitation_probability,
+                      );
+                      return `${Math.round(precip * 100)}% chance`;
+                    })()}
+                  </span>
+                </div>
               </div>
             )}
             <div className="flex items-center gap-2">
