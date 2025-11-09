@@ -1,8 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import Image, { StaticImageData } from "next/image";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
+
+import elonMuskImg from "../../public/images/elon_musk.jpg";
+import taylorSwiftImg from "../../public/images/taylor_swift.jpg";
+import drakeImg from "../../public/images/drake.jpg";
+import kimKardashianImg from "../../public/images/kim_kardashian.webp";
+import celebrityProfiles from "../data/celebrityProfiles.json";
+
+interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  handle: string;
+  credits: string;
+  emissionsSaved: string;
+  image: StaticImageData;
+}
+
+const leaderboard: LeaderboardEntry[] = [
+  {
+    rank: 1,
+    name: "Elon Musk",
+    handle: "@elonmusk",
+    credits: "2,697.8",
+    emissionsSaved: "11,262.7 kg CO₂",
+    image: elonMuskImg,
+  },
+];
 
 export default function Friends() {
   const router = useRouter();
@@ -95,6 +122,7 @@ export default function Friends() {
             total_credits: -3437000, // -3,437 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: drakeImg,
           },
           {
             user_id: "celebrity_elon",
@@ -103,6 +131,7 @@ export default function Friends() {
             total_credits: -5443000, // -5,443 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: elonMuskImg,
           },
           {
             user_id: "celebrity_kim",
@@ -111,6 +140,7 @@ export default function Friends() {
             total_credits: -4800000, // -4,800 * 10^3
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: kimKardashianImg,
           },
           {
             user_id: "celebrity_taylor",
@@ -119,6 +149,7 @@ export default function Friends() {
             total_credits: -1753000, // -1,753 * 10^3 (assuming 10^3, not 10^-3)
             total_emissions_kg: 0,
             is_celebrity: true,
+            image: taylorSwiftImg,
           },
         ];
         
@@ -438,6 +469,11 @@ export default function Friends() {
                   
                   // Determine color based on credits (negative = red, positive = green)
                   const creditsColor = entry.total_credits < 0 ? "text-red-600" : "text-emerald-700";
+
+                  const normalizedUsername = (entry.username || "").toLowerCase().replace(/[^a-z0-9_]/gi, "");
+                  const celebrityPhoto = isCelebrity
+                    ? entry.image || (celebrityProfiles as Record<string, string>)[normalizedUsername]
+                    : undefined;
                   
                   return (
                     <div
@@ -454,19 +490,32 @@ export default function Friends() {
                     >
                       {/* Rank Badge */}
                       <div className="flex items-center gap-4">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-full font-bold ${
-                          entry.rank === 1
-                            ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white text-lg shadow-lg"
-                            : entry.rank === 2
-                            ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
-                            : entry.rank === 3
-                            ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
-                            : isCelebrity
-                            ? "bg-gradient-to-br from-purple-400 to-pink-400 text-white"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}>
-                          {medalEmoji || `#${entry.rank}`}
-                        </div>
+                        {isCelebrity && celebrityPhoto ? (
+                          <div className="flex h-12 w-12 items-center justify-center">
+                            <div className="h-12 w-12 overflow-hidden rounded-full ring-2 ring-purple-300">
+                              <Image
+                                src={celebrityPhoto}
+                                alt={`${entry.username} profile`}
+                                width={48}
+                                height={48}
+                                className="h-full w-full object-cover"
+                                unoptimized={typeof celebrityPhoto === "string"}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={`flex h-12 w-12 items-center justify-center rounded-full font-bold ${
+                            entry.rank === 1
+                              ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white text-lg shadow-lg"
+                              : entry.rank === 2
+                              ? "bg-gradient-to-br from-gray-300 to-gray-400 text-white text-lg shadow-md"
+                              : entry.rank === 3
+                              ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white text-lg shadow-md"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {medalEmoji || `#${entry.rank}`}
+                          </div>
+                        )}
                         
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
