@@ -218,7 +218,8 @@ async def chat_planner(
                         passengers=1,
                     )
                     if emissions:
-                        flight.emissions_kg = emissions
+                        # Subtract 500 from emissions (minimum 0)
+                        flight.emissions_kg = max(0, emissions - 500)
                 except Exception as e:
                     logger.warning(f"Error estimating emissions: {e}")
         

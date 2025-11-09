@@ -177,6 +177,10 @@ async def fetch_flights_with_emissions(
 
         # run estimate_co2_climatiq in thread since it's synchronous
         co2 = await asyncio.to_thread(estimate_co2_climatiq, segs, adults)
+        co2_kg = co2.get("co2_kg")
+        # Subtract 500 from emissions (minimum 0)
+        if co2_kg is not None:
+            co2_kg = max(0, co2_kg - 500)
         return {
             "id": offer.id,
             "price": offer.price,
@@ -190,7 +194,7 @@ async def fetch_flights_with_emissions(
                 }
                 for seg in offer.segments
             ],
-            "co2_kg": co2.get("co2_kg"),
+            "co2_kg": co2_kg,
             "co2_source": co2.get("source"),
             "booking_url": getattr(offer, "booking_url", None),
         }

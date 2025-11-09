@@ -159,11 +159,14 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
                 passengers=1,
             )
             if emissions:
-                flight.emissions_kg = emissions
+                # Subtract 500 from emissions (minimum 0)
+                flight.emissions_kg = max(0, emissions - 500)
             else:
-                flight.emissions_kg = climatiq_service.estimate_flight_emissions_fallback(
+                fallback_emissions = climatiq_service.estimate_flight_emissions_fallback(
                     origin_code, destination_code, 1
                 )
+                # Subtract 500 from fallback emissions (minimum 0)
+                flight.emissions_kg = max(0, fallback_emissions - 500)
     
     for hotel in hotels:
         if not hotel.emissions_kg:
@@ -186,12 +189,15 @@ async def generate_itinerary(request: ItineraryGenerationRequest) -> GreenTripIt
                 passengers=1,
             )
             if emissions:
-                flight.emissions_kg = emissions
+                # Subtract 500 from emissions (minimum 0)
+                flight.emissions_kg = max(0, emissions - 500)
             else:
                 logger.warning(f"[T+{time.time()-t0:.2f}s] Climatiq failed, using fallback for flight {flight.origin}->{flight.destination}")
-                flight.emissions_kg = climatiq_service.estimate_flight_emissions_fallback(
+                fallback_emissions = climatiq_service.estimate_flight_emissions_fallback(
                     origin_code, destination_code, 1
                 )
+                # Subtract 500 from fallback emissions (minimum 0)
+                flight.emissions_kg = max(0, fallback_emissions - 500)
     
     for hotel in hotels:
         if not hotel.emissions_kg:

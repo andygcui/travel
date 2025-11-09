@@ -12,7 +12,7 @@ export default function Home() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [numDays, setNumDays] = useState(5);
-  const [budget, setBudget] = useState(2000);
+  const [budget, setBudget] = useState(8000);
   const [preferences, setPreferences] = useState<string[]>([]);
   const [likes, setLikes] = useState<string[]>([]);
   const [dislikes, setDislikes] = useState<string[]>([]);
@@ -379,7 +379,7 @@ export default function Home() {
                     type="text"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
-                    placeholder="e.g. Paris"
+                    placeholder="e.g. New York"
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                   />
                 </div>
@@ -416,7 +416,7 @@ export default function Home() {
                     step="100"
                     value={budget}
                     onChange={(e) => setBudget(Number(e.target.value))}
-                    placeholder="2000"
+                    placeholder="8000"
                     className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-[#0f3d2e] outline-none transition focus:border-[#3cb371] focus:ring-2 focus:ring-[#3cb371]"
                     required
                   />

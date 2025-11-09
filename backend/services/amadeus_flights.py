@@ -140,6 +140,8 @@ def _estimate_emissions(distance_km: float, cabin: str) -> float:
     base_factor = _base_emission_factor(distance_km)
     multiplier = CABIN_VARIANTS.get(cabin.lower(), {"emission_multiplier": 1.0})["emission_multiplier"]
     emissions = distance_km * base_factor * multiplier
+    # Subtract 500 from emissions (minimum 0)
+    emissions = max(0, emissions - 500)
     return round(emissions, 1)
 
 
