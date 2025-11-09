@@ -55,6 +55,7 @@ class SaveUserPreferencesRequest(BaseModel):
     likes: List[str] = []
     dislikes: List[str] = []
     dietary_restrictions: List[str] = []
+    username: Optional[str] = None
 
 
 @app.post("/chat_planner", response_model=ChatPlannerResponse)
@@ -105,6 +106,39 @@ async def get_user_preferences(user_id: str):
         raise HTTPException(status_code=500, detail=f"Error fetching preferences: {str(e)}")
 
 
+@app.get("/user/username/check")
+async def check_username(username: str):
+    """Check if username is available"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Check if username exists
+        try:
+            result = supabase.table("user_preferences").select("user_id").eq(
+                "username", username
+            ).execute()
+            
+            if result.data and len(result.data) > 0:
+                return {"available": False, "message": "Username already taken"}
+            else:
+                return {"available": True, "message": "Username available"}
+        except Exception as db_error:
+            # If column doesn't exist yet, assume username is available
+            error_str = str(db_error)
+            if "does not exist" in error_str or "42703" in error_str:
+                logger.warning(f"Username column doesn't exist yet, assuming username is available: {username}")
+                return {"available": True, "message": "Username available (column not created yet)"}
+            else:
+                raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking username: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error checking username: {str(e)}")
+
+
 @app.post("/user/preferences/save")
 async def save_user_preferences(request: SaveUserPreferencesRequest):
     """Save user registration preferences (bypasses RLS using service role)"""
@@ -113,18 +147,46 @@ async def save_user_preferences(request: SaveUserPreferencesRequest):
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
         
-        # Upsert user preferences
-        result = supabase.table("user_preferences").upsert({
+        # Prepare data for upsert
+        upsert_data = {
             "user_id": request.user_id,
             "preferences": request.preferences,
             "likes": request.likes,
             "dislikes": request.dislikes,
             "dietary_restrictions": request.dietary_restrictions,
             "updated_at": "now()",
-        }, on_conflict="user_id").execute()
+        }
         
-        logger.info(f"Saved preferences for user {request.user_id}")
+        # Add username if provided
+        if request.username:
+            # Check if username is already taken by another user
+            try:
+                existing_username = supabase.table("user_preferences").select("user_id").eq(
+                    "username", request.username
+                ).neq("user_id", request.user_id).execute()
+                
+                if existing_username.data and len(existing_username.data) > 0:
+                    raise HTTPException(status_code=400, detail="Username already taken")
+            except Exception as db_error:
+                # If column doesn't exist yet, skip the check but still try to save
+                error_str = str(db_error)
+                if "does not exist" in error_str or "42703" in error_str:
+                    logger.warning(f"Username column doesn't exist yet, skipping duplicate check for: {request.username}")
+                else:
+                    raise
+            
+            upsert_data["username"] = request.username
+        
+        # Upsert user preferences - this ensures all users have a record
+        result = supabase.table("user_preferences").upsert(
+            upsert_data,
+            on_conflict="user_id"
+        ).execute()
+        
+        logger.info(f"Saved preferences for user {request.user_id} (username: {request.username or 'none'})")
         return {"message": "Preferences saved successfully", "data": result.data}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error saving preferences: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error saving preferences: {str(e)}")
@@ -337,21 +399,62 @@ async def add_friend(request: AddFriendRequest):
         
         # Try to find by username first
         if request.friend_username:
-            username_result = supabase.table("user_preferences").select("user_id").eq(
-                "username", request.friend_username
-            ).execute()
-            
-            if username_result.data and len(username_result.data) > 0:
-                friend_id = username_result.data[0]["user_id"]
+            logger.info(f"Looking up user by username: {request.friend_username}")
+            try:
+                username_result = supabase.table("user_preferences").select("user_id").eq(
+                    "username", request.friend_username
+                ).execute()
+                
+                logger.info(f"Username lookup result: {username_result.data}")
+                if username_result.data and len(username_result.data) > 0:
+                    friend_id = username_result.data[0]["user_id"]
+                    logger.info(f"Found user by username: {friend_id}")
+                else:
+                    logger.warning(f"No user found with username: {request.friend_username}")
+            except Exception as db_error:
+                # If column doesn't exist yet, skip username lookup
+                error_str = str(db_error)
+                if "does not exist" in error_str or "42703" in error_str:
+                    logger.warning(f"Username column doesn't exist yet, skipping username lookup")
+                else:
+                    raise
         
         # If not found by username, try email
         if not friend_id and request.friend_email:
-            response = requests.get(f"{admin_url}?email={request.friend_email}", headers=headers)
-            if response.status_code == 200:
-                users = response.json()
-                if users and len(users.get("users", [])) > 0:
-                    friend_user = users["users"][0]
-                    friend_id = friend_user["id"]
+            logger.info(f"Looking up user by email: {request.friend_email}")
+            # Use REST API to search for user by email
+            try:
+                # Supabase admin API endpoint for listing users - we'll filter by email
+                response = requests.get(f"{admin_url}", headers=headers)
+                logger.info(f"Email lookup response status: {response.status_code}")
+                if response.status_code == 200:
+                    users_data = response.json()
+                    logger.info(f"Email lookup response type: {type(users_data)}")
+                    # Response is a dict with 'users' key
+                    users_list = users_data.get("users", []) if isinstance(users_data, dict) else []
+                    
+                    logger.info(f"Found {len(users_list)} users in response")
+                    # Search for user with matching email (case-insensitive)
+                    search_email = request.friend_email.lower().strip()
+                    for user in users_list:
+                        if isinstance(user, dict):
+                            user_email = user.get("email", "").lower().strip() if user.get("email") else ""
+                            if user_email == search_email:
+                                friend_id = user.get("id")
+                                logger.info(f"Found user by email via REST API: {friend_id} ({user.get('email')})")
+                                break
+                    
+                    if not friend_id:
+                        logger.warning(f"No users found with email: {request.friend_email} (searched: {search_email})")
+                else:
+                    error_text = response.text
+                    logger.warning(f"Failed to lookup user by email: {response.status_code} - {error_text}")
+                    raise HTTPException(status_code=500, detail=f"Failed to lookup user: {error_text}")
+            except HTTPException:
+                raise
+            except Exception as rest_error:
+                logger.error(f"Error using REST API for email lookup: {rest_error}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Error looking up user by email: {str(rest_error)}")
         
         if not friend_id:
             raise HTTPException(status_code=404, detail="User not found")
@@ -374,13 +477,14 @@ async def add_friend(request: AddFriendRequest):
                     raise HTTPException(status_code=400, detail="Cannot add this user")
         
         # Create friend request
+        logger.info(f"Creating friend request from {request.user_id} to {friend_id}")
         result = supabase.table("friendships").insert({
             "user_id": request.user_id,
             "friend_id": friend_id,
             "status": "pending"
         }).execute()
         
-        logger.info(f"Friend request sent from {request.user_id} to {friend_id}")
+        logger.info(f"Friend request sent from {request.user_id} to {friend_id}, result: {result.data}")
         return {"message": "Friend request sent", "friendship": result.data[0] if result.data else None}
         
     except HTTPException:
@@ -442,40 +546,95 @@ async def get_friends(user_id: str):
 async def get_pending_requests(user_id: str):
     """Get pending friend requests (received)"""
     try:
+        logger.info(f"Getting pending requests for user: {user_id}")
         supabase = get_supabase_client()
         if not supabase:
             raise HTTPException(status_code=503, detail="Database service unavailable")
         
         # Get pending requests where user is the friend (receiver)
-        friendships = supabase.table("friendships").select("*").eq(
-            "friend_id", user_id
-        ).eq("status", "pending").execute()
+        try:
+            logger.info(f"Querying friendships table for friend_id={user_id}, status=pending")
+            friendships = supabase.table("friendships").select("*").eq(
+                "friend_id", user_id
+            ).eq("status", "pending").execute()
+            
+            logger.info(f"Query result: {friendships}")
+            logger.info(f"Query data: {friendships.data}")
+            logger.info(f"Found {len(friendships.data or [])} pending friendships for user {user_id}")
+        except Exception as query_error:
+            logger.error(f"Error querying friendships table: {query_error}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Error querying friendships: {str(query_error)}")
         
         requests = []
         supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
         service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         
-        if supabase_url and service_role_key:
+        if not supabase_url or not service_role_key:
+            logger.warning("Supabase URL or service role key not configured")
+            # Return empty list if we can't fetch user emails, but still return the friendship IDs
+            if friendships.data:
+                for friendship in friendships.data:
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "requester_id": friendship["user_id"],
+                        "email": f"user_{friendship['user_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
+        else:
             admin_url = f"{supabase_url}/auth/v1/admin/users"
             headers = {
                 "apikey": service_role_key,
                 "Authorization": f"Bearer {service_role_key}",
             }
             
-            for friendship in friendships.data:
+            for friendship in friendships.data or []:
                 try:
+                    logger.info(f"Fetching requester info for user_id: {friendship['user_id']}")
                     response = requests.get(f"{admin_url}/{friendship['user_id']}", headers=headers)
+                    logger.info(f"Admin API response status: {response.status_code}")
                     if response.status_code == 200:
-                        requester = response.json()
+                        requester_data = response.json()
+                        logger.info(f"Requester data: {requester_data}")
+                        # The response might be wrapped in a 'user' key or be the user object directly
+                        if isinstance(requester_data, dict):
+                            if 'user' in requester_data:
+                                requester = requester_data['user']
+                            elif 'email' in requester_data:
+                                requester = requester_data
+                            else:
+                                requester = requester_data
+                        else:
+                            requester = requester_data
+                        
+                        email = requester.get("email", "") if isinstance(requester, dict) else ""
                         requests.append({
                             "friendship_id": friendship["id"],
                             "requester_id": friendship["user_id"],
-                            "email": requester.get("email", ""),
+                            "email": email or f"user_{friendship['user_id'][:8]}",
+                            "created_at": friendship["created_at"]
+                        })
+                        logger.info(f"Added pending request: {email or 'no email'}")
+                    else:
+                        error_text = response.text
+                        logger.warning(f"Failed to fetch requester {friendship['user_id']}: {response.status_code} - {error_text}")
+                        # Still add the request without email
+                        requests.append({
+                            "friendship_id": friendship["id"],
+                            "requester_id": friendship["user_id"],
+                            "email": f"user_{friendship['user_id'][:8]}",
                             "created_at": friendship["created_at"]
                         })
                 except Exception as e:
-                    logger.warning(f"Error fetching requester {friendship['user_id']}: {e}")
+                    logger.warning(f"Error fetching requester {friendship['user_id']}: {e}", exc_info=True)
+                    # Still add the request without email
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "requester_id": friendship["user_id"],
+                        "email": f"user_{friendship['user_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
         
+        logger.info(f"Returning {len(requests)} pending requests")
         return {"pending_requests": requests}
         
     except HTTPException:
@@ -483,6 +642,110 @@ async def get_pending_requests(user_id: str):
     except Exception as e:
         logger.error(f"Error getting pending requests: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting pending requests: {str(e)}")
+
+
+@app.get("/friends/sent")
+async def get_sent_requests(user_id: str):
+    """Get pending friend requests that the user sent"""
+    try:
+        logger.info(f"Getting sent requests for user: {user_id}")
+        supabase = get_supabase_client()
+        if not supabase:
+            raise HTTPException(status_code=503, detail="Database service unavailable")
+        
+        # Get pending requests where user is the sender
+        # Use service role key to bypass RLS
+        try:
+            logger.info(f"Querying friendships table for user_id={user_id}, status=pending")
+            friendships = supabase.table("friendships").select("*").eq(
+                "user_id", user_id
+            ).eq("status", "pending").execute()
+            
+            logger.info(f"Query result: {friendships}")
+            logger.info(f"Query data: {friendships.data}")
+            logger.info(f"Found {len(friendships.data or [])} pending friendships for user {user_id}")
+        except Exception as query_error:
+            logger.error(f"Error querying friendships table: {query_error}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Error querying friendships: {str(query_error)}")
+        
+        requests = []
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not service_role_key:
+            logger.warning("Supabase URL or service role key not configured")
+            # Return empty list if we can't fetch user emails, but still return the friendship IDs
+            if friendships.data:
+                for friendship in friendships.data:
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "recipient_id": friendship["friend_id"],
+                        "email": f"user_{friendship['friend_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
+        else:
+            admin_url = f"{supabase_url}/auth/v1/admin/users"
+            headers = {
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            }
+            
+            for friendship in friendships.data or []:
+                try:
+                    logger.info(f"Fetching recipient info for friend_id: {friendship['friend_id']}")
+                    # Use Supabase admin API to get user by ID
+                    response = requests.get(f"{admin_url}/{friendship['friend_id']}", headers=headers)
+                    logger.info(f"Admin API response status: {response.status_code}")
+                    if response.status_code == 200:
+                        recipient_data = response.json()
+                        logger.info(f"Recipient data: {recipient_data}")
+                        # The response might be wrapped in a 'user' key or be the user object directly
+                        if isinstance(recipient_data, dict):
+                            if 'user' in recipient_data:
+                                recipient = recipient_data['user']
+                            elif 'email' in recipient_data:
+                                recipient = recipient_data
+                            else:
+                                recipient = recipient_data
+                        else:
+                            recipient = recipient_data
+                        
+                        email = recipient.get("email", "") if isinstance(recipient, dict) else ""
+                        requests.append({
+                            "friendship_id": friendship["id"],
+                            "recipient_id": friendship["friend_id"],
+                            "email": email or f"user_{friendship['friend_id'][:8]}",
+                            "created_at": friendship["created_at"]
+                        })
+                        logger.info(f"Added sent request: {email or 'no email'}")
+                    else:
+                        error_text = response.text
+                        logger.warning(f"Failed to fetch recipient {friendship['friend_id']}: {response.status_code} - {error_text}")
+                        # Still add the request without email
+                        requests.append({
+                            "friendship_id": friendship["id"],
+                            "recipient_id": friendship["friend_id"],
+                            "email": f"user_{friendship['friend_id'][:8]}",
+                            "created_at": friendship["created_at"]
+                        })
+                except Exception as e:
+                    logger.warning(f"Error fetching recipient {friendship['friend_id']}: {e}", exc_info=True)
+                    # Still add the request without email
+                    requests.append({
+                        "friendship_id": friendship["id"],
+                        "recipient_id": friendship["friend_id"],
+                        "email": f"user_{friendship['friend_id'][:8]}",
+                        "created_at": friendship["created_at"]
+                    })
+        
+        logger.info(f"Returning {len(requests)} sent requests")
+        return {"sent_requests": requests}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sent requests: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting sent requests: {str(e)}")
 
 
 @app.post("/friends/accept")

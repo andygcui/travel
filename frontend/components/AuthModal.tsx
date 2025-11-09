@@ -24,6 +24,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
   const [isSignUp, setIsSignUp] = useState(false)
   const [step, setStep] = useState<'credentials' | 'preferences'>('credentials')
   const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [selectedPreferences, setSelectedPreferences] = useState<string[]>([])
@@ -34,8 +35,27 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
   const [error, setError] = useState('')
   const [newUserId, setNewUserId] = useState<string | null>(null)
   const [newUserSession, setNewUserSession] = useState<any>(null)
+  const [checkingUsername, setCheckingUsername] = useState(false)
 
   if (!isOpen) return null
+
+  const checkUsernameAvailability = async (usernameToCheck: string): Promise<boolean> => {
+    if (!usernameToCheck.trim()) return false
+    setCheckingUsername(true)
+    try {
+      const response = await fetch(`http://localhost:8000/user/username/check?username=${encodeURIComponent(usernameToCheck.trim())}`)
+      if (response.ok) {
+        const data = await response.json()
+        return data.available === true
+      }
+      return false
+    } catch (err) {
+      console.error('Error checking username:', err)
+      return false
+    } finally {
+      setCheckingUsername(false)
+    }
+  }
 
   const handleCredentials = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,6 +64,29 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
 
     try {
       if (isSignUp) {
+        // Validate username is provided
+        if (!username.trim()) {
+          setError('Username is required')
+          setLoading(false)
+          return
+        }
+
+        // Validate username format (alphanumeric, underscore, hyphen, 3-20 chars)
+        const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/
+        if (!usernameRegex.test(username.trim())) {
+          setError('Username must be 3-20 characters and contain only letters, numbers, underscores, or hyphens')
+          setLoading(false)
+          return
+        }
+
+        // Check if username is available
+        const isAvailable = await checkUsernameAvailability(username.trim())
+        if (!isAvailable) {
+          setError('Username is already taken. Please choose another.')
+          setLoading(false)
+          return
+        }
+
         // Sign up with name in metadata
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -56,13 +99,35 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
         })
         if (error) throw error
         
-        // If sign up successful, move to preferences step
+        // If sign up successful, create user_preferences record immediately with username
         if (data.user) {
           setNewUserId(data.user.id)
           // Store session if available (email confirmation might be disabled)
           if (data.session) {
             setNewUserSession(data.session)
           }
+          
+          // Create user_preferences record for all users with username
+          // This ensures usernames can be saved for all users
+          try {
+            await fetch('http://localhost:8000/user/preferences/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: data.user.id,
+                username: username.trim(),
+                preferences: [],
+                likes: [],
+                dislikes: [],
+                dietary_restrictions: [],
+              }),
+            })
+            console.log('Created user_preferences record for new user with username')
+          } catch (err) {
+            console.error('Error creating user_preferences record:', err)
+            // Continue anyway - record will be created when preferences are saved
+          }
+          
           setStep('preferences')
         } else {
           // Email confirmation required
@@ -75,6 +140,29 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
           password,
         })
         if (error) throw error
+        
+        // Ensure user_preferences record exists for existing users
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          try {
+            await fetch('http://localhost:8000/user/preferences/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: session.user.id,
+                preferences: [],
+                likes: [],
+                dislikes: [],
+                dietary_restrictions: [],
+              }),
+            })
+            console.log('Ensured user_preferences record exists for user')
+          } catch (err) {
+            console.error('Error ensuring user_preferences record:', err)
+            // Continue anyway
+          }
+        }
+        
         onAuthSuccess()
         onClose()
       }
@@ -85,10 +173,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
     }
   }
 
-  const savePreferences = async (userId: string) => {
+  const savePreferences = async (userId: string, usernameToSave?: string) => {
     try {
       console.log('Attempting to save preferences for user:', userId)
       console.log('Preferences to save:', {
+        username: usernameToSave,
         preferences: selectedPreferences,
         likes: selectedLikes,
         dislikes: selectedDislikes,
@@ -96,16 +185,23 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
       })
       
       // Use backend API to save preferences (bypasses RLS)
+      const requestBody: any = {
+        user_id: userId,
+        preferences: selectedPreferences,
+        likes: selectedLikes,
+        dislikes: selectedDislikes,
+        dietary_restrictions: selectedDietary,
+      }
+      
+      // Add username if provided
+      if (usernameToSave) {
+        requestBody.username = usernameToSave
+      }
+      
       const response = await fetch('http://localhost:8000/user/preferences/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          preferences: selectedPreferences,
-          likes: selectedLikes,
-          dislikes: selectedDislikes,
-          dietary_restrictions: selectedDietary,
-        }),
+        body: JSON.stringify(requestBody),
       })
       
       if (!response.ok) {
@@ -142,8 +238,9 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
       console.log('User ID:', userId)
       
       if (userId) {
-        // Try to save empty preferences (might fail if no session due to RLS)
-        const saved = await savePreferences(userId)
+        // Save empty preferences with username to ensure user_preferences record exists
+        // This uses the backend API which bypasses RLS
+        const saved = await savePreferences(userId, username.trim())
         console.log('Preferences saved:', saved)
         if (!saved && !session?.user) {
           // Can't save yet due to RLS, but that's OK - will save on login
@@ -191,12 +288,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
       console.log('User ID:', userId, 'Selected preferences:', { selectedPreferences, selectedLikes, selectedDislikes, selectedDietary })
       
       if (userId) {
-        // Try to save preferences (might fail if no session due to RLS)
-        const saved = await savePreferences(userId)
+        // Try to save preferences with username (might fail if no session due to RLS)
+        const saved = await savePreferences(userId, username.trim())
         console.log('Preferences saved:', saved)
         if (!saved && !session?.user) {
           // Can't save yet due to RLS - store in sessionStorage to save on login
           sessionStorage.setItem('pending_preferences', JSON.stringify({
+            username: username.trim(),
             preferences: selectedPreferences,
             likes: selectedLikes,
             dislikes: selectedDislikes,
@@ -249,6 +347,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
 
   const resetForm = () => {
     setName('')
+    setUsername('')
     setEmail('')
     setPassword('')
     setSelectedPreferences([])
@@ -416,19 +515,55 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalP
 
         <form onSubmit={handleCredentials} className="space-y-4">
           {isSignUp && (
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-emerald-900">
-                Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required={isSignUp}
-                className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                placeholder="Your full name"
-              />
-            </div>
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-emerald-900">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required={isSignUp}
+                  className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  placeholder="Your full name"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-emerald-900">
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value)
+                    setError('') // Clear error when user types
+                  }}
+                  onBlur={async () => {
+                    if (username.trim() && username.trim().length >= 3) {
+                      const isAvailable = await checkUsernameAvailability(username.trim())
+                      if (!isAvailable) {
+                        setError('Username is already taken')
+                      }
+                    }
+                  }}
+                  required={isSignUp}
+                  pattern="[a-zA-Z0-9_-]{3,20}"
+                  className="w-full rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  placeholder="username (3-20 chars, letters, numbers, _, -)"
+                  disabled={checkingUsername}
+                />
+                {checkingUsername && (
+                  <p className="mt-1 text-xs text-emerald-600">Checking availability...</p>
+                )}
+                {username.trim() && !checkingUsername && (
+                  <p className="mt-1 text-xs text-emerald-600">
+                    Press Tab or click outside to check availability
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           <div>
