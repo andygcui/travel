@@ -995,8 +995,19 @@ export default function Dashboard() {
 
   const handleViewTrip = (trip: SavedTrip | SharedTrip) => {
     const itineraryData: any = trip.itinerary_data;
+    const selectedFlightIdFromTrip =
+      "selected_flight_id" in trip ? (trip as SavedTrip).selected_flight_id ?? null : null;
+    const selectedFlightDataFromTrip =
+      "selected_flight_data" in trip ? (trip as SavedTrip).selected_flight_data ?? null : null;
 
     if (itineraryData) {
+      if (selectedFlightIdFromTrip && !itineraryData.selected_flight_id) {
+        itineraryData.selected_flight_id = selectedFlightIdFromTrip;
+      }
+      if (selectedFlightDataFromTrip && !itineraryData.selected_flight_data) {
+        itineraryData.selected_flight_data = selectedFlightDataFromTrip;
+      }
+
       sessionStorage.setItem("itinerary", JSON.stringify(itineraryData));
 
       const originalRequest = itineraryData.original_request;

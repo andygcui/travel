@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import { supabase } from "../lib/supabase";
@@ -200,16 +200,49 @@ export default function Home() {
     setPreferences([]);
   };
 
-  const togglePreference = (pref: string) => {
-    setPreferences((prev) => {
-      const newPrefs = prev.includes(pref) 
-        ? prev.filter((p) => p !== pref) 
-        : [...prev, pref];
-      // Save preferences if user is logged in
-      if (user) {
-        // REMOVED: saveUserPreferences() - preferences from trip form should NOT be saved
+  const persistUserPreferences = useCallback(
+    async (updatedPrefs: string[]) => {
+      if (!user?.id) return;
+      try {
+        const normalized = updatedPrefs
+          .map((pref) => (typeof pref === "string" ? pref.trim().toLowerCase() : ""))
+          .filter(Boolean);
+
+        await supabase
+          .from("user_preferences")
+          .upsert(
+            {
+              user_id: user.id,
+              preferences: normalized,
+              likes,
+              dislikes,
+              dietary_restrictions: dietaryRestrictions,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+          );
+      } catch (err) {
+        console.error("Error saving preferences:", err);
       }
-      return newPrefs;
+    },
+    [user?.id, likes, dislikes, dietaryRestrictions],
+  );
+
+  const togglePreference = (pref: string) => {
+    const normalizedPref = (pref || "").trim().toLowerCase();
+    if (!normalizedPref) return;
+
+    setPreferences((prev) => {
+      const exists = prev.includes(normalizedPref);
+      const updated = exists
+        ? prev.filter((p) => p !== normalizedPref)
+        : [...prev, normalizedPref];
+
+      if (user) {
+        persistUserPreferences(updated);
+      }
+
+      return updated;
     });
   };
 

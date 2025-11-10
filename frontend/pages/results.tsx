@@ -59,6 +59,12 @@ interface FlightGroup {
   lowestEmissions?: number | null;
 }
 
+interface PersistedFlightSelection {
+  cabin: FlightCabinOption;
+  group: FlightGroup;
+  maxEmission: number;
+}
+
 interface DaypartWeather {
   summary: string;
   temperature_c: number;
@@ -174,6 +180,8 @@ interface ItineraryResponse {
   hotels?: LodgingOption[];
   preferences?: string[]; // User's selected preferences
   original_request?: TripRequestSnapshot;
+  selected_flight_id?: string | null;
+  selected_flight_data?: PersistedFlightSelection | null;
 }
 
 const HOTEL_IMAGE_DEFAULT =
@@ -296,9 +304,11 @@ export default function Results() {
   const [confirmedCabinId, setConfirmedCabinId] = useState<string | null>(null);
   const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
   const [confirmedHotelId, setConfirmedHotelId] = useState<string | null>(null);
+  const [persistedFlightSelection, setPersistedFlightSelection] = useState<PersistedFlightSelection | null>(null);
   const [friends, setFriends] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [checkingPreferences, setCheckingPreferences] = useState(false);
+  const restoredFlightOnce = useRef(false);
 
   // Log friends count whenever it changes
   useEffect(() => {
@@ -647,18 +657,19 @@ export default function Results() {
 
       // Get confirmed cabin data
       const confirmedCabin = confirmedCabinId ? findCabinById.get(confirmedCabinId) : null;
+      const cabinForStatus = confirmedCabin ?? persistedFlightSelection;
       
       // Calculate carbon emissions and credits if we have flight data
       let carbonEmissions: number | null = null;
       let carbonCredits: number | null = null;
       
-      if (confirmedCabin && (newStatus === "during" || newStatus === "after")) {
-        carbonEmissions = confirmedCabin.cabin.emissionsKg || null;
+      if (cabinForStatus && (newStatus === "during" || newStatus === "after")) {
+        carbonEmissions = cabinForStatus.cabin.emissionsKg || null;
         
         // Calculate carbon credits: find max emissions in the same flight group, then calculate credits
-        if (carbonEmissions && confirmedCabin.maxEmission > 0) {
+        if (carbonEmissions && cabinForStatus.maxEmission > 0) {
           // Carbon credits = max emissions - actual emissions
-          carbonCredits = confirmedCabin.maxEmission - carbonEmissions;
+          carbonCredits = cabinForStatus.maxEmission - carbonEmissions;
         }
       }
 
@@ -690,7 +701,7 @@ export default function Results() {
           user_id: userId,
           status: newStatus,
           selected_flight_id: confirmedCabinId || null,
-          selected_flight_data: confirmedCabin?.cabin || null,
+          selected_flight_data: cabinForStatus?.cabin || null,
           carbon_emissions_kg: carbonEmissions,
           carbon_credits: carbonCredits,
         }),
@@ -945,7 +956,39 @@ export default function Results() {
     setExpandedFlightId(null);
     setSelectedHotelId(null);
     setConfirmedHotelId(null);
+    restoredFlightOnce.current = false;
   }, [itinerary?.destination, itinerary?.start_date, itinerary?.end_date]);
+
+  useEffect(() => {
+    const data = itinerary?.selected_flight_data;
+    if (data && typeof data === "object") {
+      const raw = data as Partial<PersistedFlightSelection> & {
+        cabin?: FlightCabinOption;
+        group?: FlightGroup & { cabins?: FlightCabinOption[] };
+        maxEmission?: number;
+      };
+      if (raw.cabin && raw.group) {
+        const normalized: PersistedFlightSelection = {
+          cabin: raw.cabin,
+          group: raw.group,
+          maxEmission:
+            typeof raw.maxEmission === "number"
+              ? raw.maxEmission
+              : Array.isArray(raw.group.cabins)
+                ? raw.group.cabins.reduce((max, cabin) => {
+                    if (cabin.emissionsKg === undefined || cabin.emissionsKg === null) return max;
+                    return Math.max(max, cabin.emissionsKg);
+                  }, 0)
+                : 0,
+        };
+        setPersistedFlightSelection(normalized);
+      } else {
+        setPersistedFlightSelection(null);
+      }
+    } else {
+      setPersistedFlightSelection(null);
+    }
+  }, [itinerary?.selected_flight_data]);
 
   const handleSaveTrip = async () => {
     if (!user || !itinerary) {
@@ -986,6 +1029,16 @@ export default function Results() {
         }
       }
 
+      const selectedFlightId = confirmedCabinId ?? itinerary?.selected_flight_id ?? null;
+      const selectionSource = confirmedCabinData ?? persistedFlightSelection ?? itinerary?.selected_flight_data ?? null;
+      const selectedFlightData = selectionSource
+        ? {
+            cabin: selectionSource.cabin,
+            group: selectionSource.group,
+            maxEmission: selectionSource.maxEmission,
+          }
+        : null;
+
       const finalizedSnapshot: TripRequestSnapshot = {
         origin: requestSnapshot?.origin ?? (itinerary as any)?.origin ?? undefined,
         destination: requestSnapshot?.destination ?? itinerary.destination,
@@ -1009,6 +1062,8 @@ export default function Results() {
       const itineraryPayload: ItineraryResponse = {
         ...itinerary,
         original_request: finalizedSnapshot,
+        selected_flight_id: selectedFlightId,
+        selected_flight_data: selectedFlightData,
       };
 
       sessionStorage.setItem("itinerary", JSON.stringify(itineraryPayload));
@@ -1032,6 +1087,8 @@ export default function Results() {
             budget: itinerary.budget,
             mode: itinerary.mode,
             itinerary_data: itineraryPayload,
+            selected_flight_id: selectedFlightId,
+            selected_flight_data: selectedFlightData,
           })
           .eq("id", savedTripId)
           .eq("user_id", userId) // Ensure user owns the trip
@@ -1055,6 +1112,8 @@ export default function Results() {
               budget: itinerary.budget,
               mode: itinerary.mode,
               itinerary_data: itineraryPayload,
+              selected_flight_id: selectedFlightId,
+              selected_flight_data: selectedFlightData,
             })
             .select()
             .single();
@@ -1081,6 +1140,8 @@ export default function Results() {
             budget: itinerary.budget,
             mode: itinerary.mode,
             itinerary_data: itineraryPayload,
+            selected_flight_id: selectedFlightId,
+            selected_flight_data: selectedFlightData,
           })
           .select()
           .single();
@@ -1616,6 +1677,34 @@ export default function Results() {
     return map;
   }, [groupedFlights]);
 
+  useEffect(() => {
+    if (restoredFlightOnce.current) return;
+    const savedId = itinerary?.selected_flight_id || confirmedCabinId;
+    if (!savedId) return;
+
+    if (findCabinById.has(savedId)) {
+      const cabinInfo = findCabinById.get(savedId)!;
+      setConfirmedCabinId(savedId);
+      setSelectedCabinId(savedId);
+      setExpandedFlightId(cabinInfo.group.groupId);
+      setPersistedFlightSelection({
+        cabin: cabinInfo.cabin,
+        group: cabinInfo.group,
+        maxEmission: cabinInfo.maxEmission,
+      });
+      restoredFlightOnce.current = true;
+      return;
+    }
+
+    const fallback = itinerary?.selected_flight_data;
+    if (fallback && typeof fallback === "object") {
+      setConfirmedCabinId(savedId);
+      setSelectedCabinId(savedId);
+      setPersistedFlightSelection(fallback as PersistedFlightSelection);
+      restoredFlightOnce.current = true;
+    }
+  }, [confirmedCabinId, findCabinById, itinerary?.selected_flight_id, itinerary?.selected_flight_data]);
+
   const selectedCabinData = useMemo(() => {
     if (!selectedCabinId) return null;
     return findCabinById.get(selectedCabinId) || null;
@@ -1625,6 +1714,10 @@ export default function Results() {
     if (!confirmedCabinId) return null;
     return findCabinById.get(confirmedCabinId) || null;
   }, [confirmedCabinId, findCabinById]);
+
+  const effectiveFlightSelection = useMemo(() => {
+    return confirmedCabinData ?? persistedFlightSelection ?? null;
+  }, [confirmedCabinData, persistedFlightSelection]);
 
   const hotelById = useMemo(() => {
     const map = new Map<string, HotelCard>();
@@ -1716,20 +1809,22 @@ export default function Results() {
   const baseEmissions =
     typeof itinerary.totals?.emissions_kg === "number" ? itinerary.totals.emissions_kg : 0;
 
-  const hasConfirmedFlight = Boolean(confirmedCabinData);
-  const confirmedFlightCost = hasConfirmedFlight ? confirmedCabinData!.cabin.price ?? 0 : null;
+  const hasConfirmedFlight = Boolean(effectiveFlightSelection);
+  const confirmedFlightCost = hasConfirmedFlight ? effectiveFlightSelection!.cabin.price ?? 0 : null;
   const confirmedEmissions =
-    hasConfirmedFlight && confirmedCabinData!.cabin.emissionsKg !== undefined && confirmedCabinData!.cabin.emissionsKg !== null
-      ? confirmedCabinData!.cabin.emissionsKg
+    hasConfirmedFlight &&
+    effectiveFlightSelection!.cabin.emissionsKg !== undefined &&
+    effectiveFlightSelection!.cabin.emissionsKg !== null
+      ? effectiveFlightSelection!.cabin.emissionsKg
       : null;
 
   const rawConfirmedCredits =
     hasConfirmedFlight &&
-    confirmedCabinData!.cabin.emissionsKg !== undefined &&
-    confirmedCabinData!.cabin.emissionsKg !== null &&
-    confirmedCabinData!.maxEmission > 0 &&
-    confirmedCabinData!.cabin.cabin.toLowerCase() !== "first"
-      ? Math.max(0, confirmedCabinData!.maxEmission - confirmedCabinData!.cabin.emissionsKg)
+    effectiveFlightSelection!.cabin.emissionsKg !== undefined &&
+    effectiveFlightSelection!.cabin.emissionsKg !== null &&
+    effectiveFlightSelection!.maxEmission > 0 &&
+    effectiveFlightSelection!.cabin.cabin.toLowerCase() !== "first"
+      ? Math.max(0, effectiveFlightSelection!.maxEmission - effectiveFlightSelection!.cabin.emissionsKg)
       : null;
   const confirmedCarbonCredits =
     rawConfirmedCredits !== null && rawConfirmedCredits > 0.05 ? rawConfirmedCredits : null;
@@ -2004,24 +2099,24 @@ export default function Results() {
           </div>
         </section>
 
-        {confirmedCabinData && (
+        {effectiveFlightSelection && (
           <div className="mx-auto mb-16 max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-md">
             <div className="flex flex-wrap items-start justify-between gap-6 border-b border-gray-200 pb-4">
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Selected Flight</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {confirmedCabinData.group.origin} → {confirmedCabinData.group.destination}
+                  {effectiveFlightSelection.group.origin} → {effectiveFlightSelection.group.destination}
                 </p>
                 <p className="text-sm font-medium text-gray-800">
-                  {formatDateTime(confirmedCabinData.group.departure)} —{" "}
-                  {formatDateTime(confirmedCabinData.group.arrival)} ·{" "}
-                  {formatDurationLabel(confirmedCabinData.group.departure, confirmedCabinData.group.arrival)}
+                  {formatDateTime(effectiveFlightSelection.group.departure)} —{" "}
+                  {formatDateTime(effectiveFlightSelection.group.arrival)} ·{" "}
+                  {formatDurationLabel(effectiveFlightSelection.group.departure, effectiveFlightSelection.group.arrival)}
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Cabin</p>
                 <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {formatCabinLabel(confirmedCabinData.cabin.cabin)}
+                  {formatCabinLabel(effectiveFlightSelection.cabin.cabin)}
                 </p>
               </div>
             </div>
@@ -2029,14 +2124,14 @@ export default function Results() {
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Flight Cost</p>
                 <p className="mt-2 text-lg font-semibold text-gray-900">
-                  {currency.format(confirmedCabinData.cabin.price)}
+                  {currency.format(effectiveFlightSelection.cabin.price)}
                 </p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Flight Emissions</p>
                 <p className="mt-2 text-lg font-semibold text-gray-900">
-                  {confirmedCabinData.cabin.emissionsKg !== undefined && confirmedCabinData.cabin.emissionsKg !== null
-                    ? `${confirmedCabinData.cabin.emissionsKg.toFixed(1)} kg`
+                  {effectiveFlightSelection.cabin.emissionsKg !== undefined && effectiveFlightSelection.cabin.emissionsKg !== null
+                    ? `${effectiveFlightSelection.cabin.emissionsKg.toFixed(1)} kg`
                     : "N/A"}
                 </p>
               </div>
@@ -2054,6 +2149,17 @@ export default function Results() {
                   setConfirmedCabinId(null);
                   setSelectedCabinId(null);
                   setExpandedFlightId(null);
+                  setPersistedFlightSelection(null);
+                  setItinerary((prev) => {
+                    if (!prev) return prev;
+                    const updated: ItineraryResponse = {
+                      ...prev,
+                      selected_flight_id: null,
+                      selected_flight_data: null,
+                    };
+                    sessionStorage.setItem("itinerary", JSON.stringify(updated));
+                    return updated;
+                  });
                 }}
                 className="rounded-md border border-gray-300 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:text-gray-900"
               >
@@ -2260,6 +2366,35 @@ export default function Results() {
                         onClick={() => {
                           if (selectedCabinId) {
                             setConfirmedCabinId(selectedCabinId);
+                            const cabinInfo = findCabinById.get(selectedCabinId);
+                            if (cabinInfo) {
+                              const selection: PersistedFlightSelection = {
+                                cabin: cabinInfo.cabin,
+                                group: cabinInfo.group,
+                                maxEmission: cabinInfo.maxEmission,
+                              };
+                              setPersistedFlightSelection(selection);
+                              setItinerary((prev) => {
+                                if (!prev) return prev;
+                                const updated: ItineraryResponse = {
+                                  ...prev,
+                                  selected_flight_id: selectedCabinId,
+                                  selected_flight_data: selection,
+                                };
+                                sessionStorage.setItem("itinerary", JSON.stringify(updated));
+                                return updated;
+                              });
+                            } else {
+                              setItinerary((prev) => {
+                                if (!prev) return prev;
+                                const updated: ItineraryResponse = {
+                                  ...prev,
+                                  selected_flight_id: selectedCabinId,
+                                };
+                                sessionStorage.setItem("itinerary", JSON.stringify(updated));
+                                return updated;
+                              });
+                            }
                           }
                         }}
                         disabled={!selectedCabinId || selectionConfirmed}
