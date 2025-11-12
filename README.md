@@ -1,19 +1,26 @@
-# 🌱 GreenTrip - AI-Powered Sustainable Travel Planner
+# green trip: AI powered sustainable travel agent
 
-A full-stack web application that generates optimized eco-friendly travel itineraries using AI and live API integrations.
+full-stack web application that generates optimized eco-friendly travel itineraries using AI and live API integrations
 
-## 🧱 Tech Stack
+built during hackprinceton fall 25 
+
+demo: https://youtu.be/GqZLsIdueTE 
+
+## Tech Stack
 
 - **Frontend**: Next.js 14 + TailwindCSS + Chart.js
 - **Backend**: FastAPI (Python 3.11+)
-- **AI Layer**: Dedalus API
+- **AI Layer**: Dedalus API, Open AI API
+- **iMessage Integration**: Photon
 - **External APIs**:
-  - Amadeus (flights + hotels)
+  - Flights API (flights)
+  - Amadeus (hotels)
   - Google Places API (attractions + geocoding)
+  - Google Maps API (maps + transportation optimization)
   - OpenWeather API (forecast)
   - Climatiq API (CO₂ estimation)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -71,7 +78,7 @@ npm install
 
 **Note:** If using Bun instead of Node.js, `better-sqlite3` is not needed as Bun has built-in SQLite support.
 
-## 🔐 Environment Variables
+## Environment Variables
 
 Create a `.env` file in `backend/`:
 
@@ -86,7 +93,7 @@ CLIMATIQ_KEY=your_climatiq_key
 
 **Note**: The backend gracefully falls back to sample data if API keys are missing, so you can prototype without them.
 
-## 🎯 Features
+## Features
 
 1. **Smart Itinerary Generation**
    - Enter destination, number of days, budget, and preferences
@@ -106,7 +113,7 @@ CLIMATIQ_KEY=your_climatiq_key
    - Comparison charts
    - Regenerate in different mode
 
-## 📡 API Endpoints
+## API Endpoints
 
 - `GET /plan` - Health check
 - `POST /generate_itinerary` - Generate GreenTrip itinerary
@@ -122,7 +129,7 @@ CLIMATIQ_KEY=your_climatiq_key
 - `POST /plan` - Legacy GreenTrip endpoint
 - `POST /bookings` - Create booking
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 /backend
@@ -146,13 +153,13 @@ CLIMATIQ_KEY=your_climatiq_key
   ...
 ```
 
-## 🛠️ Development
+## Development
 
 The backend uses absolute imports (e.g., `from schemas import ...`). Make sure you're running from the `backend/` directory.
 
 The frontend uses TypeScript. If you encounter issues, you can convert `.tsx` files to `.js` and remove type annotations.
 
-## 📝 Notes
+## Notes
 
 - All API keys are read server-side through `dotenv` - never exposed to the client
 - The system includes fallback data for development without API keys
